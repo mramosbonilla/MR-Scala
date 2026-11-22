@@ -222,7 +222,7 @@ function updateReviewGuide() {
     }else if(emptyLayer){
       guide.textContent="No hay elementos asignados a "+activeLayer+". Si falta alguno, selecciónalo en el plano y asígnalo aquí. Si solo está dibujado en la imagen, toca Trazar en "+activeLayer+".";
     }else{
-      guide.textContent="Las piezas de "+activeLayer+" están en azul. Toca una para confirmarla o reasignarla. Si falta una pieza editable, tócala y añádela a esta capa.";
+      guide.textContent="Las piezas de "+activeLayer+" están en azul. Puedes reasignarlas o añadir las que falten. Cuando termines de revisar, pulsa Confirmar capa si quedan propuestas.";
     }
   }
 }
@@ -244,6 +244,9 @@ function refresh() {
   $("reviewLayerCount").textContent=layerCount
     ? layerCount+(layerCount===1?" pieza":" piezas")+" · "+confirmed+(confirmed===1?" confirmada":" confirmadas")
     : "Capa vacía";
+  const waiting=pieces.filter(item=>item.status==="proposed").length;
+  $("confirmReviewLayer").hidden=activeLayer==="Pendiente"||waiting===0;
+  $("confirmReviewLayer").textContent="Confirmar capa · "+waiting+(waiting===1?" propuesta":" propuestas");
   $("layerLegend").hidden=!layerCount;
   $("layerPiecesLabel").hidden=!layerCount;
   const list=$("layerPieces");
@@ -449,6 +452,16 @@ $("reviewDestination").onchange=()=>reclassify($("reviewDestination").value);
 $("addToLayer").onclick=()=>reclassify(activeLayer);
 $("removeFromLayer").onclick=()=>reclassify("Pendiente");
 $("confirmLayerPiece").onclick=()=>$("approveElement").click();
+$("confirmReviewLayer").onclick=()=>{
+  if(view!=="review"||activeLayer==="Pendiente")return;
+  const l=current();
+  const proposals=l.elements.filter(item=>item.layer===activeLayer&&item.status==="proposed");
+  if(!proposals.length)return;
+  for(const item of proposals)item.status="confirmed";
+  invalidate(l);
+  refresh();
+  notify(proposals.length===1?"1 pieza confirmada en "+activeLayer+".":proposals.length+" piezas confirmadas en "+activeLayer+".");
+};
 $("reviewCandidate").onchange=()=>{selected=$("reviewCandidate").value;refresh();};
 $("height").onchange=()=>editElement(e=>e.height=numeric($("height")));
 $("base").onchange=()=>editElement(e=>e.base=numeric($("base")));
