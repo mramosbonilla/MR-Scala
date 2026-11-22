@@ -368,15 +368,16 @@ $("referenceOpacity").oninput=()=>{
   $("referenceValue").textContent=$("referenceOpacity").value+" %";
   paint();
 };
-function pickPlan(purpose,newProject=false) {
+const planFileTypes=$("file").accept;
+function pickPlan(purpose,newProject=false,types=planFileTypes) {
   sourcePurpose=purpose;
   startProjectFromPlan=newProject;
   const input=$("file");
-  (document.querySelector("dialog[open]")||document.body).append(input);
+  input.accept=types;
+  ($("importDialog").open?$("importDialog"):document.body).append(input);
   input.click();
 }
 $("source").onclick=()=>pickPlan("Planta");
-$("coverPlan").onclick=()=>pickPlan("Planta",true);
 $("attach").onclick=()=>{
   const type=prompt("Tipo de lámina (Corte o Fachada)","Corte");
   if(!["corte","fachada"].includes(type?.trim().toLowerCase()))return;
@@ -437,6 +438,8 @@ $("file").onchange=async()=>{
   const owner=project, draft=startProjectFromPlan?blank():null, purpose=sourcePurpose;
   const target=draft?draft.levels[0]:current(), ext=file.name.split(".").at(-1).toLowerCase();
   if(draft){
+    if($("importDialog").open)$("importDialog").close();
+    if($("projectsDialog").open)$("projectsDialog").close();
     draft.title=file.name.replace(/\.[^.]+$/,"");
     if($("coverDialog").open)$("coverDialog").close();
   }
@@ -534,15 +537,21 @@ function switchProject(next,key=null) {
 }
 
 $("closeProjects").onclick=()=>$("projectsDialog").close();
-function pickProjectFile() {
-  const input=$("projectFile");
-  const modal=document.querySelector("dialog[open]");
-  (modal||document.body).append(input);
-  input.click();
+function openImportMenu() {
+  const dialog=$("importDialog");
+  if(!dialog.open)dialog.showModal();
 }
-$("importProject").onclick=pickProjectFile;
-$("importDirect").onclick=pickProjectFile;
-$("coverImport").onclick=pickProjectFile;
+$("importProject").onclick=openImportMenu;
+$("importDirect").onclick=openImportMenu;
+$("coverImport").onclick=openImportMenu;
+$("closeImport").onclick=()=>$("importDialog").close();
+$("importImage").onclick=()=>pickPlan("Planta",true,"image/jpeg,image/png,image/webp,image/svg+xml,.jpg,.jpeg,.png,.webp,.svg");
+$("importCad").onclick=()=>pickPlan("Planta",true,".dxf");
+$("importJson").onclick=()=>{
+  const input=$("projectFile");
+  $("importDialog").append(input);
+  input.click();
+};
 $("coverProjects").onclick=()=>{$("coverDialog").close();$("open").click();};
 $("coverContinue").onclick=()=>$("coverDialog").close();
 
@@ -599,11 +608,13 @@ $("projectFile").onchange=async()=>{
     if(!validProject(next))throw Error();
     await saves;
     if(!switchProject(next))return;
+    if($("importDialog").open)$("importDialog").close();
     if($("projectsDialog").open)$("projectsDialog").close();
     if($("coverDialog").open)$("coverDialog").close();
     saveLocal();
     notify("Proyecto abierto.");
   } catch {
+    if($("importDialog").open)$("importDialog").close();
     if($("coverDialog").open)$("coverDialog").close();
     if($("projectsDialog").open)$("projectsDialog").close();
     notify("El archivo no es un proyecto MR Scala compatible.");

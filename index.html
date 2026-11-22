@@ -1,13 +1,12 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.14"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.14"><script src="scala.js?v=0.14" defer></script></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.15"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.15"><script src="scala.js?v=0.15" defer></script></head>
 <body>
-<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.14</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar proyecto</button><button id="save">Exportar copia</button></div></header>
+<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.15</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar</button><button id="save">Exportar copia</button></div></header>
 <dialog id="coverDialog" aria-label="MR Scala">
   <img src="./caratula.webp" alt="MR Scala. Del plano al espacio. Fachada frontal en dibujo técnico y maqueta." width="1122" height="1402">
   <div class="cover-actions">
     <button id="coverProjects">Mis proyectos</button>
-    <button id="coverPlan" class="primary">Importar plano</button>
-    <button id="coverImport">Importar proyecto JSON</button>
+    <button id="coverImport" class="primary">Importar</button>
     <button id="coverContinue">Entrar al editor</button>
   </div>
 </dialog>
@@ -15,7 +14,16 @@
   <div class="project-dialog-bar"><h2 id="projectsHeading">Mis proyectos</h2><button type="button" id="closeProjects">Cerrar</button></div>
   <p id="projectListStatus" role="status"></p>
   <ul id="projectList"></ul>
-  <button type="button" id="importProject">Importar JSON desde Archivos</button>
+  <button type="button" id="importProject">Importar</button>
+</dialog>
+<dialog id="importDialog" aria-labelledby="importHeading">
+  <div class="project-dialog-bar"><h2 id="importHeading">Importar</h2><button type="button" id="closeImport">Cerrar</button></div>
+  <div class="import-options">
+    <button type="button" id="importImage">Imagen del plano · JPG, PNG, WebP o SVG</button>
+    <button type="button" id="importCad">Archivo CAD · DXF ASCII</button>
+    <button type="button" id="importJson">Proyecto MR Scala · JSON</button>
+  </div>
+  <p>Para usar PDF o DWG, exporta primero una imagen o un DXF ASCII.</p>
 </dialog>
 <main>
 <p id="autosaveStatus" class="autosave-status" role="status" aria-live="polite"></p>
