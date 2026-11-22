@@ -205,9 +205,8 @@ function invalidate(l=current()) { l.approved=null;scene=null;saveLocal(); }
 function option(parent,text,value) { const opt=new Option(text,value);parent.add(opt); }
 function updateReviewGuide() {
   const guide=$("reviewGuide");
-  const source=current().sources[sourceIndex];
   const emptyLayer=!live(current()).some(e=>e.layer===activeLayer);
-  guide.hidden=!(view==="review"&&(tool==="area"||(tool==="select"&&source?.data&&source.kind==="Planta"&&emptyLayer)));
+  guide.hidden=!(view==="review"&&(tool==="area"||tool==="select"));
   if(guide.hidden)return;
   if(tool==="area"){
     const count=drawing.length;
@@ -215,7 +214,16 @@ function updateReviewGuide() {
       count<3?"Esquinas marcadas: "+count+". Sigue el borde del tramo.":
       "Esquinas marcadas: "+count+". Termina el contorno y pulsa Cerrar superficie.";
   }else{
-    guide.textContent=activeLayer==="Muros"?"Aún no hay muros editables. Toca Proponer muros para buscar tramos en la imagen o Trazar en Muros para crear uno.":"Aún no hay piezas en "+activeLayer+". Puedes añadir una con Trazar en "+activeLayer+".";
+    const e=element();
+    if(e){
+      guide.textContent=e.layer===activeLayer
+        ? "Esta pieza está en "+activeLayer+". Si pertenece a otra capa, usa Reasignar a otra capa."
+        : "Esta pieza está en "+e.layer+". Usa Añadir a "+activeLayer+" si pertenece a la capa que revisas.";
+    }else if(emptyLayer){
+      guide.textContent="No hay elementos asignados a "+activeLayer+". Si falta alguno, selecciónalo en el plano y asígnalo aquí. Si solo está dibujado en la imagen, toca Trazar en "+activeLayer+".";
+    }else{
+      guide.textContent="Las piezas de "+activeLayer+" están en azul. Toca una para confirmarla o reasignarla. Si falta una pieza editable, tócala y añádela a esta capa.";
+    }
   }
 }
 function refresh() {
@@ -257,6 +265,7 @@ function refresh() {
     $("reviewDestination").value=e.layer;
     $("addToLayer").textContent="Añadir a "+activeLayer;
     $("addToLayer").hidden=e.layer===activeLayer;
+    $("confirmLayerPiece").hidden=e.layer!==activeLayer||e.layer==="Pendiente"||e.status!=="proposed";
     $("removeFromLayer").hidden=e.layer!==activeLayer||e.layer==="Pendiente"||e.status==="excluded";
   }
   $("title").value=project.title; $("block").value=project.block;
@@ -439,6 +448,7 @@ $("elementLayer").onchange=()=>reclassify($("elementLayer").value);
 $("reviewDestination").onchange=()=>reclassify($("reviewDestination").value);
 $("addToLayer").onclick=()=>reclassify(activeLayer);
 $("removeFromLayer").onclick=()=>reclassify("Pendiente");
+$("confirmLayerPiece").onclick=()=>$("approveElement").click();
 $("reviewCandidate").onchange=()=>{selected=$("reviewCandidate").value;refresh();};
 $("height").onchange=()=>editElement(e=>e.height=numeric($("height")));
 $("base").onchange=()=>editElement(e=>e.base=numeric($("base")));
