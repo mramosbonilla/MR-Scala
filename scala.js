@@ -203,12 +203,29 @@ function checks(l) {
 }
 function invalidate(l=current()) { l.approved=null;scene=null;saveLocal(); }
 function option(parent,text,value) { const opt=new Option(text,value);parent.add(opt); }
+function wallStrip(a,b,c) {
+  const length=distance(a,b);
+  if(!positive(length))return null;
+  const normal={x:(a.y-b.y)/length,y:(b.x-a.x)/length};
+  const width=(c.x-a.x)*normal.x+(c.y-a.y)*normal.y;
+  if(Math.abs(width)<.00001)return null;
+  const dx=normal.x*width,dy=normal.y*width;
+  return [a,b,{x:b.x+dx,y:b.y+dy},{x:a.x+dx,y:a.y+dy}];
+}
 function updateReviewGuide() {
   const guide=$("reviewGuide");
   const emptyLayer=!live(current()).some(e=>e.layer===activeLayer);
-  guide.hidden=!(view==="review"&&(tool==="area"||tool==="select"));
+    $("wallTrace").hidden=activeLayer!=="Muros"||view!=="review";
+  $("wallTrace").textContent=tool==="wallStrip"?"Reiniciar tramo":"Trazar tramo de muro";
+  guide.hidden=!(view==="review"&&(tool==="area"||tool==="wallStrip"||tool==="select"));
   if(guide.hidden)return;
-  if(tool==="area"){
+  if(tool==="wallStrip"){
+    guide.textContent=[
+      "Toca el inicio de uno de los bordes largos del muro.",
+      "Toca el otro extremo sobre ese mismo borde.",
+      "Toca el borde opuesto para marcar el grosor."
+    ][drawing.length];
+  }else if(tool==="area"){
     const count=drawing.length;
     guide.textContent=count===0?"Toca la primera esquina de un tramo.":
       count<3?"Esquinas marcadas: "+count+". Sigue el borde del tramo.":
@@ -268,6 +285,7 @@ function refresh() {
     $("reviewDestination").value=e.layer;
     $("addToLayer").textContent="Añadir a "+activeLayer;
     $("addToLayer").hidden=e.layer===activeLayer;
+    $("excludeLayerPiece").hidden=e.status==="excluded";
     $("confirmLayerPiece").hidden=e.layer!==activeLayer||e.layer==="Pendiente"||e.status!=="proposed";
     $("removeFromLayer").hidden=e.layer!==activeLayer||e.layer==="Pendiente"||e.status==="excluded";
   }
@@ -344,6 +362,7 @@ function setTool(next) {
     lasso:"Rodea las piezas. Suelta para cerrar la selección.",
     endpoints:"Marca dos puntos a lo largo de un elemento, cerca de sus extremos.",
     pan:"Arrastra para mover el plano.",
+    wallStrip:"Traza un tramo recto siguiendo los dos bordes del muro.",
     area:"Marca las esquinas y pulsa «Cerrar superficie».",line:"Marca el inicio y el fin.",
     measure:"Marca los dos extremos de una distancia conocida.",
     symbol:"Toca el punto de colocación del símbolo.",start:"Toca un punto libre dentro del contorno para iniciar."
@@ -352,7 +371,7 @@ function setTool(next) {
   $("traceInLayer").textContent=tool==="area"?"Cerrar superficie":"Trazar en "+activeLayer;
   $("pan").setAttribute("aria-pressed",tool==="pan");
   $("selectInLayer").setAttribute("aria-pressed",tool==="select");
-  if(tool==="area")notify("");
+  if(tool==="area"||tool==="wallStrip")notify("");
   updateReviewGuide();paint();
 }
 function editTool(next) { if(view!=="review")navigate("review");setTool(next); }
@@ -361,6 +380,7 @@ function newElement(points,kind,name=activeLayer,layer=activeLayer,height=null) 
   current().elements.push(e); selected=e.id; activeLayer=layer; invalidate();setTool("select");refresh();
 }
 $("selectInLayer").onclick=()=>setTool("select");
+$("wallTrace").onclick=()=>editTool("wallStrip");
 document.querySelectorAll("[data-select-tool]").forEach(b=>b.onclick=()=>{
   marked.clear();selected=null;reviewHits=[];setTool(b.dataset.selectTool);refresh();
 });
@@ -452,6 +472,7 @@ $("reviewDestination").onchange=()=>reclassify($("reviewDestination").value);
 $("addToLayer").onclick=()=>reclassify(activeLayer);
 $("removeFromLayer").onclick=()=>reclassify("Pendiente");
 $("confirmLayerPiece").onclick=()=>$("approveElement").click();
+$("excludeLayerPiece").onclick=()=>$("remove").click();
 $("confirmReviewLayer").onclick=()=>{
   if(view!=="review"||activeLayer==="Pendiente")return;
   const l=current();
@@ -873,7 +894,10 @@ function planPaint() {
       }
       if(drawing.length) {
         pen.strokeStyle="#e37714";pen.fillStyle="#e37714";pen.lineWidth=2/camera.scale;
-        trace(transient?[...drawing,transient]:drawing,tool==="lasso"&&drawing.length>2);pen.stroke();
+        const strip=tool==="wallStrip"&&drawing.length===2&&transient
+          ? wallStrip(drawing[0],drawing[1],transient):null;
+        const preview=strip||(transient&&!(tool==="wallStrip"&&drawing.length===2)?[...drawing,transient]:drawing);
+        trace(preview,Boolean(strip)||(tool==="lasso"&&drawing.length>2));pen.stroke();
         if(tool!=="brush"&&tool!=="lasso"){
           for(const p of drawing){pen.beginPath();pen.arc(p.x,p.y,4/camera.scale,0,Math.PI*2);pen.fill();}
         }
@@ -1042,7 +1066,7 @@ function suggestTrace() {
   $("traceMissing").textContent="Trazar en "+activeLayer;
   $("traceMissing").hidden=false;
 }
-$("traceMissing").onclick=()=>{$("traceInLayer").click();$("canvas").scrollIntoView({block:"nearest"});};
+$("traceMissing").onclick=()=>{(activeLayer==="Muros"?$("wallTrace"):$("traceInLayer")).click();$("canvas").scrollIntoView({block:"nearest"});};
 
 function finishGesture() {
   const points=drawing;
@@ -1158,6 +1182,17 @@ canvas.addEventListener("pointerup",event=>{
   if(tool==="endpoints"){
     if(!drawing.length){drawing=[p];paint();return;}
     if(distance(drawing[0],p)>=5/camera.scale)finishEndpoints(drawing[0],p);
+    return;
+  }
+  if(tool==="wallStrip"){
+    if(drawing.length===2){
+      const footprint=wallStrip(drawing[0],drawing[1],p);
+      if(!footprint){notify("Toca el borde opuesto para darle grosor al muro.");return;}
+      newElement(footprint,"area","Tramo de muro","Muros");
+      notify("Tramo añadido. Para seguir por la esquina, traza otro tramo.");
+    }else if(!drawing.length||distance(drawing[0],p)*camera.scale>=3){
+      drawing.push(p);transient=null;updateReviewGuide();paint();
+    }
     return;
   }
   if(tool==="area"){drawing.push(p);updateReviewGuide();paint();return;}
