@@ -215,7 +215,7 @@ function updateReviewGuide() {
       count<3?"Esquinas marcadas: "+count+". Sigue el borde del tramo.":
       "Esquinas marcadas: "+count+". Termina el contorno y pulsa Cerrar superficie.";
   }else{
-    guide.textContent=activeLayer==="Muros"?"Toca Proponer muros para detectar tramos rellenos, o usa Trazar en Muros para dibujar la pieza.":"Para añadir la primera pieza de esta capa, toca Trazar en "+activeLayer+" y marca sus esquinas.";
+    guide.textContent=activeLayer==="Muros"?"Aún no hay muros editables. Toca Proponer muros para buscar tramos en la imagen o Trazar en Muros para crear uno.":"Aún no hay piezas en "+activeLayer+". Puedes añadir una con Trazar en "+activeLayer+".";
   }
 }
 function refresh() {
@@ -230,8 +230,19 @@ function refresh() {
     "Coloca dos cotas reales compatibles para calcular la escala.";
   updateReviewGuide();
   $("reviewLayer").value=activeLayer;
-  const layerCount=live(l).filter(item=>item.layer===activeLayer).length;
-  $("reviewLayerCount").textContent=layerCount===1?"1 propuesta":layerCount+" propuestas";
+  const pieces=live(l).filter(item=>item.layer===activeLayer);
+  const layerCount=pieces.length;
+  const confirmed=pieces.filter(item=>item.status==="confirmed").length;
+  $("reviewLayerCount").textContent=layerCount
+    ? layerCount+(layerCount===1?" pieza":" piezas")+" · "+confirmed+(confirmed===1?" confirmada":" confirmadas")
+    : "Capa vacía";
+  $("layerLegend").hidden=!layerCount;
+  $("layerPiecesLabel").hidden=!layerCount;
+  const list=$("layerPieces");
+  list.replaceChildren();
+  option(list,"Elige una pieza para ubicarla","");
+  pieces.forEach((item,i)=>option(list,(i+1)+". "+item.name+(item.status==="confirmed"?" · confirmada":""),item.id));
+  list.value=pieces.some(item=>item.id===selected)?selected:"";
   const grouped=marked.size>0;
   $("groupSelection").hidden=!reviewingPlant||!grouped;
   $("groupCount").textContent=marked.size===1?"1 pieza seleccionada":marked.size+" piezas seleccionadas";
@@ -365,12 +376,26 @@ $("measure").onclick=()=>{
   if(current().measures.length>=3) {notify("Ya hay tres cotas. Puedes borrarlas para volver a medir.");return;}
   editTool("measure");
 };
+$("layerPieces").onchange=()=>{
+  const piece=live(current()).find(item=>item.id===$("layerPieces").value&&item.layer===activeLayer);
+  if(!piece)return;
+  selected=piece.id;reviewHits=[];setTool("select");
+  const b=bounds(piece.points), {w,h}=size();
+  camera.x=w/2-(b.x+b.right)*camera.scale/2;
+  camera.y=h/2-(b.y+b.bottom)*camera.scale/2;
+  refresh();
+};
+function proposalFeedback(message) {
+  $("proposalResult").textContent=message;
+  $("proposalResult").hidden=false;
+  notify(message);
+}
 $("proposeWalls").onclick=()=>{
   const l=current(), {factor}=scaleInfo(l);
   if(!reference||$("wallProposalPanel").hidden)return;
   if(!factor){
     if(l.measures.length<3)$("measure").click();
-    else notify("Las cotas difieren más del 3 %. Usa Borrar cotas y vuelve a medir.");
+    else proposalFeedback("Las cotas difieren más del 3 %. Usa Borrar cotas y vuelve a medir.");
     return;
   }
   try{
@@ -385,10 +410,10 @@ $("proposeWalls").onclick=()=>{
     }
     if(added){l.coverage=false;invalidate();}
     activeLayer="Muros";selected=null;reviewHits=[];navigate("review");
-    notify(added?added+" propuestas añadidas a Muros. Revisa y confirma las que correspondan.":
+    proposalFeedback(added?added+" propuestas añadidas. Revisa las piezas azules o elige una en la lista.":
       "No encontré nuevos tramos oscuros y rellenos. Puedes incorporar los que falten con Trazar en Muros.");
   }catch{
-    notify("No se pudo analizar esta imagen. Puedes seguir trazando en la app.");
+    proposalFeedback("No se pudo analizar esta imagen. Puedes seguir trazando en la app.");
   }
 };
 $("clearMeasures").onclick=()=>{current().measures=[];invalidate();navigate("review");};
@@ -441,6 +466,7 @@ $("validate").onclick=()=>{
 $("title").onchange=()=>{project.title=$("title").value.trim()||"Proyecto sin título";saveLocal();};
 $("block").onchange=()=>{project.block=$("block").value.trim()||"Bloque A";saveLocal();};
 function referenceLoad(reset) {
+  $("proposalResult").hidden=true;
   const src=current().sources[sourceIndex], token=++sourceToken;
   reference=null;
   if(src?.data) {
@@ -452,6 +478,7 @@ function referenceLoad(reset) {
   if(reset)fit();refresh();
 }
 function activate(index) {
+  $("proposalResult").hidden=true;
   reviewHits=[];
   project.active=index;sourceIndex=current().sources.findIndex(s=>s.kind==="Planta");selected=null;
   navigate("review");referenceLoad(true);

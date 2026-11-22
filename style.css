@@ -39,3 +39,8 @@
 
 .wall-proposal{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;margin-bottom:.65rem}
 .wall-proposal span{font-size:.85rem;color:var(--muted)}
+
+.layer-pieces{display:flex;align-items:center;gap:.4rem .75rem;flex-wrap:wrap;margin:.35rem 0 .55rem;font-size:.85rem;color:var(--muted)}
+.layer-pieces label{margin:0;max-width:100%}
+.layer-swatch{display:inline-block;background:#174bb8;width:.8rem;height:.8rem;border-radius:.15rem;vertical-align:-.05rem;margin-right:.2rem}
+#proposalResult{flex-basis:100%;margin:0;font-size:.85rem;color:var(--ink)}
