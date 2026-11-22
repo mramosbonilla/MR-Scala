@@ -34,3 +34,5 @@
 .import-options{display:grid;gap:.45rem;margin-top:.9rem}
 .import-options button{text-align:left;padding:.7rem}
 #importDialog p{margin:.75rem 0 0;font-size:.875rem;color:var(--muted)}
+
+.review-guide{margin:.5rem 0 0;padding:.65rem .75rem;border-left:3px solid var(--accent);background:#e6efff;border-radius:.25rem;font-size:.9rem;line-height:1.4}

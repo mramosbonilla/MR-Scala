@@ -141,10 +141,26 @@ function checks(l) {
 }
 function invalidate(l=current()) { l.approved=null;scene=null;saveLocal(); }
 function option(parent,text,value) { const opt=new Option(text,value);parent.add(opt); }
+function updateReviewGuide() {
+  const guide=$("reviewGuide");
+  const source=current().sources[sourceIndex];
+  const emptyLayer=!live(current()).some(e=>e.layer===activeLayer);
+  guide.hidden=!(view==="review"&&(tool==="area"||(tool==="select"&&source?.data&&source.kind==="Planta"&&emptyLayer)));
+  if(guide.hidden)return;
+  if(tool==="area"){
+    const count=drawing.length;
+    guide.textContent=count===0?"Toca la primera esquina de un tramo.":
+      count<3?"Esquinas marcadas: "+count+". Sigue el borde del tramo.":
+      "Esquinas marcadas: "+count+". Termina el contorno y pulsa Cerrar superficie.";
+  }else{
+    guide.textContent="El plano está cargado como imagen. Para añadir la primera pieza de esta capa, toca Trazar en "+activeLayer+" y marca sus esquinas.";
+  }
+}
 function refresh() {
   const l=current(), e=element();
   const reviewingPlant=view==="review" && (!l.sources[sourceIndex]||l.sources[sourceIndex].kind==="Planta");
   $("layerReview").hidden=!reviewingPlant;
+  updateReviewGuide();
   $("reviewLayer").value=activeLayer;
   const layerCount=live(l).filter(item=>item.layer===activeLayer).length;
   $("reviewLayerCount").textContent=layerCount===1?"1 propuesta":layerCount+" propuestas";
@@ -244,7 +260,9 @@ function setTool(next) {
   $("draw").textContent=tool==="area" ? "Cerrar superficie" : "Trazar elemento";
   $("traceInLayer").textContent=tool==="area"?"Cerrar superficie":"Trazar en "+activeLayer;
   $("pan").setAttribute("aria-pressed",tool==="pan");
-  $("selectInLayer").setAttribute("aria-pressed",tool==="select");paint();
+  $("selectInLayer").setAttribute("aria-pressed",tool==="select");
+  if(tool==="area")notify("");
+  updateReviewGuide();paint();
 }
 function editTool(next) { if(view!=="review")navigate("review");setTool(next); }
 function newElement(points,kind,name=activeLayer,layer=activeLayer,height=null) {
@@ -848,7 +866,7 @@ document.querySelectorAll("[data-move]").forEach(b=>b.onclick=()=>move(b.dataset
 canvas.addEventListener("keydown",event=>{
   const command={ArrowUp:"forward",ArrowDown:"back",ArrowLeft:"left",ArrowRight:"right"}[event.key];
   if(view==="tour"&&command){event.preventDefault();move(command);}
-  if(event.key==="Backspace"&&drawing.length){event.preventDefault();drawing.pop();paint();}
+  if(event.key==="Backspace"&&drawing.length){event.preventDefault();drawing.pop();updateReviewGuide();paint();}
   if(event.key==="Escape"){if(view==="tour")navigate("tour");else setTool("select");}
 });
 function coords(event) {
@@ -998,7 +1016,7 @@ canvas.addEventListener("pointerup",event=>{
     if(distance(drawing[0],p)>=5/camera.scale)finishEndpoints(drawing[0],p);
     return;
   }
-  if(tool==="area"){drawing.push(p);paint();return;}
+  if(tool==="area"){drawing.push(p);updateReviewGuide();paint();return;}
   if(tool==="line"||tool==="measure") {
     if(!drawing.length){drawing.push(p);paint();return;}
     const a=drawing[0];if(distance(a,p)<.00001)return;
