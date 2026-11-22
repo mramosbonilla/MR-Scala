@@ -1,9 +1,9 @@
 const scope = new URL(self.registration.scope);
 const cachePrefix = 'mr-scala:' + scope.pathname + ':';
-const cacheName = cachePrefix + '0.22';
+const cacheName = cachePrefix + '0.23';
 const staticUrls = [
-  './', './index.html', './style.css?v=0.22', './scala.js?v=0.22',
-  './manifest.webmanifest?v=0.22', './caratula.webp', './scala-fachada-180.png', './scala-fachada-192.png', './scala-fachada-512.png'
+  './', './index.html', './style.css?v=0.23', './scala.js?v=0.23',
+  './manifest.webmanifest?v=0.23', './caratula.webp', './scala-fachada-180.png', './scala-fachada-192.png', './scala-fachada-512.png'
 ].map(path => new URL(path, scope).href);
 const assets = new Set(staticUrls);
 

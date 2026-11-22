@@ -80,9 +80,10 @@ function scaleInfo(l) {
 }
 function rasterWallBands(inkPixels,width,height,metresPerPixel,vertical) {
   const rows=vertical?width:height, columns=vertical?height:width;
-  const minLength=Math.max(9,Math.ceil(.70/metresPerPixel));
-  const minThickness=Math.max(2,Math.ceil(.075/metresPerPixel));
-  const maxThickness=Math.max(minThickness,Math.floor(.55/metresPerPixel));
+  const span=Math.max(width,height);
+  const minLength=Math.max(9,Math.ceil(metresPerPixel ? .70/metresPerPixel : span*.025));
+  const minThickness=Math.max(2,Math.ceil(metresPerPixel ? .075/metresPerPixel : span*.0025));
+  const maxThickness=Math.max(minThickness,Math.floor(metresPerPixel ? .55/metresPerPixel : span*.035));
   const output=[];
   let bands=[];
   function finish(b) {
@@ -354,6 +355,7 @@ function navigate(next) {
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>navigate(b.dataset.view));
 function setTool(next) {
   tool=next;drawing=[];transient=null;snappedWalls=[];$("snapReview").hidden=true;
+  $("gestureResult").hidden=true;
   $("traceMissing").hidden=true;
   if(next!=="brush"&&next!=="lasso"&&next!=="endpoints"){
     marked.clear();
@@ -1071,8 +1073,13 @@ function hitsStroke(e,path,radius) {
   if(path.some(p=>(e.kind==="area"&&inside(p,e.points))||segments.some(([a,b])=>nearLine(p,a,b)<=radius)))return true;
   return edges(path,false).some(([a,b])=>segments.some(([c,d])=>segmentGap(a,b,c,d)<=radius));
 }
+function gestureFeedback(message) {
+  $("gestureResult").textContent=message;
+  $("gestureResult").hidden=!message;
+  notify(message);
+}
 function suggestTrace() {
-  notify("Aquí solo se ve el dibujo de referencia. Marca las esquinas para incorporar la pieza.");
+  gestureFeedback(activeLayer==="Muros"?"No pude identificar el tramo. Acerca el plano y toca el muro, o usa Trazar tramo de muro.":"No encontré una pieza editable aquí. Puedes incorporarla con Trazar en "+activeLayer+".");
   $("traceMissing").textContent="Trazar en "+activeLayer;
   $("traceMissing").hidden=false;
 }
@@ -1082,7 +1089,7 @@ $("showExcluded").onchange=()=>{
   if(!$("showExcluded").checked&&element()?.status==="excluded"){selected=null;reviewHits=[];}
   refresh();
 };
-$("clearSnap").onclick=()=>{snappedWalls=[];refresh();notify("");};
+$("clearSnap").onclick=()=>{snappedWalls=[];refresh();gestureFeedback("");};
 $("acceptSnap").onclick=()=>{
   if(view!=="review"||activeLayer!=="Muros"||!snappedWalls.length)return;
   const l=current();
@@ -1093,7 +1100,7 @@ $("acceptSnap").onclick=()=>{
   }
   const count=snappedWalls.length;
   snappedWalls=[];l.coverage=false;invalidate(l);refresh();
-  notify(count===1?"Tramo añadido a Muros.":count+" tramos añadidos a Muros.");
+  gestureFeedback(count===1?"Tramo añadido a Muros.":count+" tramos añadidos a Muros.");
 };
 function wallMatch(a,b,box,tolerance,wholeGesture) {
   const horizontal=box.right-box.x>=box.bottom-box.y;
@@ -1110,21 +1117,36 @@ function wallMatch(a,b,box,tolerance,wholeGesture) {
   if(!wholeGesture&&overlap/length<.4)return null;
   return gap+(length-overlap)*.4;
 }
-function snapWallsToImage(path,wholeGesture) {
+function rasterWallsForReview() {
   const l=current(), {factor}=scaleInfo(l);
-  if(activeLayer!=="Muros"||!reference||!factor||
-    sourceIndex!==l.sources.findIndex(source=>source.kind==="Planta"))return false;
+  if(activeLayer!=="Muros"||!reference||l.sources[sourceIndex]?.kind!=="Planta")return [];
+  if(sourceIndex!==l.sources.findIndex(source=>source.kind==="Planta"))return [];
   if(!wallImageCache||wallImageCache.image!==reference||wallImageCache.factor!==factor){
     try{
       const walls=detectImageWalls(reference,factor).map(points=>({points,box:bounds(points)}));
       wallImageCache={image:reference,factor,walls};
-    }catch{return false;}
+    }catch{return [];}
   }
+  return wallImageCache.walls;
+}
+function snapWallsToImage(path,wholeGesture) {
+  const l=current(), walls=rasterWallsForReview();
+  if(!walls.length)return false;
   const wallMatches=new Set();
-  for(const [a,b] of edges(path,false)){
+  const tolerance=Math.max(4,14/camera.scale);
+  if(path.length===1){
+    const {x,y}=path[0];
+    let best=null,bestDistance=Infinity;
+    for(const candidate of walls){
+      const b=candidate.box;
+      const gap=Math.hypot(Math.max(b.x-x,0,x-b.right),Math.max(b.y-y,0,y-b.bottom));
+      if(gap<=tolerance&&gap<bestDistance){best=candidate;bestDistance=gap;}
+    }
+    if(best)wallMatches.add(best);
+  }else for(const [a,b] of edges(path,false)){
     let best=null,bestScore=Infinity;
-    for(const candidate of wallImageCache.walls){
-      const score=wallMatch(a,b,candidate.box,12/camera.scale,wholeGesture);
+    for(const candidate of walls){
+      const score=wallMatch(a,b,candidate.box,tolerance,wholeGesture);
       if(score!==null&&score<bestScore){best=candidate;bestScore=score;}
     }
     if(best)wallMatches.add(best);
@@ -1146,7 +1168,7 @@ function finishGesture() {
     return;
   }
   if(brush&&snapWallsToImage(points,false)){
-    refresh();notify(snappedWalls.length?"Revisa los tramos detectados y pulsa Añadir a Muros.":"Tramos del plano seleccionados.");
+    refresh();gestureFeedback(snappedWalls.length?"Revisa los tramos detectados y pulsa Añadir a Muros.":"Tramos del plano seleccionados.");
     return;
   }
   const outline=brush?points:[...points,points[0]];
@@ -1156,13 +1178,13 @@ function finishGesture() {
   );
   for(const e of hits)marked.add(e.id);
   refresh();
-  if(hits.length)notify("Selección acumulada: "+marked.size);
+  if(hits.length)gestureFeedback("Selección acumulada: "+marked.size);
   else suggestTrace();
 }
 function finishEndpoints(a,b) {
   if(snapWallsToImage([a,b],true)){
     drawing=[];transient=null;refresh();
-    notify(snappedWalls.length?"Revisa el tramo detectado y pulsa Añadir a Muros.":"Tramo del plano seleccionado.");
+    gestureFeedback(snappedWalls.length?"Revisa el tramo detectado y pulsa Añadir a Muros.":"Tramo del plano seleccionado.");
     return;
   }
   const samples=Array.from({length:25},(_,i)=>({x:a.x+(b.x-a.x)*i/24,y:a.y+(b.y-a.y)*i/24}));
@@ -1175,7 +1197,7 @@ function finishEndpoints(a,b) {
     Number(b.e.layer===activeLayer)-Number(a.e.layer===activeLayer));
   if(matches.length)marked.add(matches[0].e.id);
   drawing=[];transient=null;refresh();
-  if(matches.length)notify("Selección acumulada: "+marked.size);
+  if(matches.length)gestureFeedback("Selección acumulada: "+marked.size);
   else suggestTrace();
 }
 
@@ -1258,8 +1280,9 @@ canvas.addEventListener("pointerup",event=>{
   if(view!=="review" || tool==="pan")return;
   if(current().sources[sourceIndex] && current().sources[sourceIndex].kind!=="Planta"){notify("Selecciona una lámina de planta para editar.");return;}
   if(tool==="endpoints"){
-    if(!drawing.length){drawing=[p];paint();return;}
+    if(!drawing.length){drawing=[p];paint();gestureFeedback("Primer punto marcado. Toca otro punto sobre el mismo muro.");return;}
     if(distance(drawing[0],p)>=5/camera.scale)finishEndpoints(drawing[0],p);
+    else gestureFeedback("Toca el segundo punto más lejos, sobre el mismo muro.");
     return;
   }
   if(tool==="wallStrip"){
@@ -1297,8 +1320,11 @@ canvas.addEventListener("pointerup",event=>{
     candidates.find(e=>e.status!=="excluded")||candidates[0];
   reviewHits=candidates.map(e=>e.id);
   selected=choice?.id||null;refresh();
-  if(choice)notify("");
-  else if(reference)suggestTrace();
+  if(choice){gestureFeedback("");return;}
+  if(reference&&snapWallsToImage([p],false)){
+    refresh();
+    gestureFeedback(snappedWalls.length?"Revisa el tramo azul y pulsa Añadir a Muros.":"Tramo del plano seleccionado.");
+  }else if(reference)suggestTrace();
 });
 canvas.addEventListener("wheel",e=>{
   if(view==="model"||view==="tour")return;e.preventDefault();

@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.22"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.22"><script src="scala.js?v=0.22" defer></script></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.23"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.23"><script src="scala.js?v=0.23" defer></script></head>
 <body>
-<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.22</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar</button><button id="save">Exportar copia</button></div></header>
+<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.23</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar</button><button id="save">Exportar copia</button></div></header>
 <dialog id="coverDialog" aria-label="MR Scala">
   <img src="./caratula.webp" alt="MR Scala. Del plano al espacio. Fachada frontal en dibujo técnico y maqueta." width="1122" height="1402">
   <div class="cover-actions">
@@ -51,6 +51,7 @@
     <label id="layerPiecesLabel">Piezas de la capa <select id="layerPieces"></select></label>
   </div>
   <div class="layerReviewBar"><button type="button" id="selectInLayer" aria-pressed="true">Toque</button><button type="button" data-select-tool="brush">Pincel</button><button type="button" data-select-tool="lasso">Lazo</button><button type="button" data-select-tool="endpoints">Dos puntos</button><button type="button" id="wallTrace" class="primary" hidden>Trazar tramo de muro</button><button type="button" id="traceInLayer">Trazar elemento</button></div>
+  <p id="gestureResult" class="review-guide" role="status" hidden></p>
   <div id="snapReview" class="layerReviewBar" hidden>
     <span id="snapCount" role="status"></span>
     <button type="button" id="acceptSnap" class="primary">Añadir a Muros</button>
