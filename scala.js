@@ -512,7 +512,18 @@ function switchProject(next,key=null) {
 }
 
 $("closeProjects").onclick=()=>$("projectsDialog").close();
-$("importProject").onclick=()=>$("projectFile").click();
+function pickProjectFile() {
+  const input=$("projectFile");
+  const modal=document.querySelector("dialog[open]");
+  (modal||document.body).append(input);
+  input.click();
+}
+$("importProject").onclick=pickProjectFile;
+$("importDirect").onclick=pickProjectFile;
+$("coverImport").onclick=pickProjectFile;
+$("coverProjects").onclick=()=>{$("coverDialog").close();$("open").click();};
+$("coverContinue").onclick=()=>$("coverDialog").close();
+
 $("open").onclick=async()=>{
   const dialog=$("projectsDialog"), list=$("projectList"), status=$("projectListStatus");
   if(!dialog.open)dialog.showModal();
@@ -567,9 +578,15 @@ $("projectFile").onchange=async()=>{
     await saves;
     if(!switchProject(next))return;
     if($("projectsDialog").open)$("projectsDialog").close();
+    if($("coverDialog").open)$("coverDialog").close();
     saveLocal();
     notify("Proyecto abierto.");
-  } catch {notify("El archivo no es un proyecto MR Scala compatible.");}
+  } catch {
+    if($("coverDialog").open)$("coverDialog").close();
+    if($("projectsDialog").open)$("projectsDialog").close();
+    notify("El archivo no es un proyecto MR Scala compatible.");
+    $("autosaveStatus").textContent="El archivo no es un proyecto MR Scala compatible.";
+  }
 };
 $("export").onclick=()=>{
   if(!current().approved || checks(current()).plan.length){notify("Valida la planta antes de exportarla.");return;}
@@ -966,6 +983,7 @@ canvas.addEventListener("wheel",e=>{
 },{passive:false});
 new ResizeObserver(()=>{if(!reference&&!drag&&!planTouches.size)fit();else paint();}).observe(canvas);
 fit();refresh();navigate("model");notify("Modelo de muestra. Arrastra para girarlo o abre Recorrido.");
+$("coverDialog").showModal();
 
 if("serviceWorker" in navigator && window.isSecureContext){
   window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(error=>console.warn("Instalación sin conexión:",error)));

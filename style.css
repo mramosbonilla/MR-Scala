@@ -23,3 +23,10 @@
 #projectList{padding:0;list-style:none}
 #projectList li+li{margin-top:.45rem}
 #projectList button{display:block;width:100%;text-align:left;overflow-wrap:anywhere}
+
+#coverDialog{width:min(94vw,31rem);max-height:92dvh;padding:0;border:0;border-radius:.85rem;background:#071942;color:white;overflow:auto}
+#coverDialog::backdrop{background:#061434e8}
+#coverDialog img{display:block;width:100%;height:auto;max-height:70dvh;object-fit:contain}
+.cover-actions{display:flex;justify-content:center;flex-wrap:wrap;gap:.45rem;padding:.8rem}
+.cover-actions button{color:var(--ink)}
+.cover-actions .primary{color:white}
