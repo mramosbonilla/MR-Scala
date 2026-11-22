@@ -1,12 +1,13 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.13"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.13"><script src="scala.js?v=0.13" defer></script></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.14"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.14"><script src="scala.js?v=0.14" defer></script></head>
 <body>
-<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.13</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar proyecto</button><button id="save">Exportar copia</button></div></header>
+<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.14</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar proyecto</button><button id="save">Exportar copia</button></div></header>
 <dialog id="coverDialog" aria-label="MR Scala">
   <img src="./caratula.webp" alt="MR Scala. Del plano al espacio. Fachada frontal en dibujo técnico y maqueta." width="1122" height="1402">
   <div class="cover-actions">
     <button id="coverProjects">Mis proyectos</button>
-    <button id="coverImport" class="primary">Importar proyecto</button>
+    <button id="coverPlan" class="primary">Importar plano</button>
+    <button id="coverImport">Importar proyecto JSON</button>
     <button id="coverContinue">Entrar al editor</button>
   </div>
 </dialog>
@@ -22,7 +23,7 @@
 <nav aria-label="Vistas"><button data-view="review" aria-pressed="true">Revisión de capas</button><button data-view="plan">Planta 2D</button><button data-view="model">Modelo 3D</button><button data-view="tour">Recorrido</button></nav>
 <div class="workspace">
 <aside>
-<h2>Fuentes</h2><button class="primary" id="source">Importar plano</button><input id="file" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,.dxf,.pdf,.dwg" hidden><input id="projectFile" type="file" accept=".json" hidden>
+<h2>Fuentes</h2><button class="primary" id="source">Importar plano</button><input id="file" type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg,.dxf,.pdf,.dwg" hidden><input id="projectFile" type="file" accept=".json" hidden>
 <select id="sources" aria-label="Lámina visible"></select><button id="attach">Otra lámina</button>
 <label class="check"><input id="underlay" type="checkbox" checked> Mostrar referencia</label>
 

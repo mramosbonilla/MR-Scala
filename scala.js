@@ -57,6 +57,7 @@ let reviewHits = [];
 let marked = new Set();
 let project = demo(), view = "review", activeLayer = "Muros", selected = null, tool = "select";
 let sourceIndex = 0, reference = null, sourceToken = 0, sourcePurpose = "Planta";
+let startProjectFromPlan = false;
 let drawing = [], transient = null, camera = {x:0,y:0,scale:1}, drag = null, scene = null;
 let eye = null, yaw = 0, orbit = -.65;
 const canvas = $("canvas"), pen = canvas.getContext("2d");
@@ -367,11 +368,19 @@ $("referenceOpacity").oninput=()=>{
   $("referenceValue").textContent=$("referenceOpacity").value+" %";
   paint();
 };
-$("source").onclick=()=>{sourcePurpose="Planta";$("file").click();};
+function pickPlan(purpose,newProject=false) {
+  sourcePurpose=purpose;
+  startProjectFromPlan=newProject;
+  const input=$("file");
+  (document.querySelector("dialog[open]")||document.body).append(input);
+  input.click();
+}
+$("source").onclick=()=>pickPlan("Planta");
+$("coverPlan").onclick=()=>pickPlan("Planta",true);
 $("attach").onclick=()=>{
   const type=prompt("Tipo de lámina (Corte o Fachada)","Corte");
   if(!["corte","fachada"].includes(type?.trim().toLowerCase()))return;
-  sourcePurpose=type.trim().toLowerCase()==="corte"?"Corte":"Fachada";$("file").click();
+  pickPlan(type.trim().toLowerCase()==="corte"?"Corte":"Fachada");
 };
 function classify(raw) {
   const name=raw.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
@@ -425,7 +434,12 @@ function fileData(file) {
 $("file").onchange=async()=>{
   const file=$("file").files[0];$("file").value="";
   if(!file)return;
-  const owner=project, target=current(), purpose=sourcePurpose, ext=file.name.split(".").at(-1).toLowerCase();
+  const owner=project, draft=startProjectFromPlan?blank():null, purpose=sourcePurpose;
+  const target=draft?draft.levels[0]:current(), ext=file.name.split(".").at(-1).toLowerCase();
+  if(draft){
+    draft.title=file.name.replace(/\.[^.]+$/,"");
+    if($("coverDialog").open)$("coverDialog").close();
+  }
   if(!["dxf","jpg","jpeg","png","webp","svg"].includes(ext)) {
     notify(ext==="dwg"?"Exporta el DWG a DXF ASCII o a una imagen por lámina.":"Exporta la página del PDF a PNG para conservar el encuadre.");return;
   }
@@ -446,6 +460,10 @@ $("file").onchange=async()=>{
       if(project!==owner)return;
       target.sources.push({kind:purpose,name:file.name,data});
       notify("Lámina incorporada. Conserva el original y traza encima de la referencia.");
+    }
+    if(draft){
+      await saves;
+      if(project!==owner||!switchProject(draft))return;
     }
     if(purpose==="Planta"){target.coverage=false;invalidate(target);}
     else saveLocal();
