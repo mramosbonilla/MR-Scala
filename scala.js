@@ -248,14 +248,36 @@ function overlappingWallUnit(seeds,level=current()) {
   }
   return unit;
 }
-let doorDraft=null;
+let doorDraft=null, windowDraft=null, doorDirection=1;
 let closedDoorId=null;
-function doorSwing(latch,hinge,tip) {
-  if(distance(hinge,latch)<1e-5||distance(hinge,tip)<1e-5)return null;
-  const start=Math.atan2(latch.y-hinge.y,latch.x-hinge.x);
-  const end=Math.atan2(tip.y-hinge.y,tip.x-hinge.x);
-  const delta=Math.atan2(Math.sin(end-start),Math.cos(end-start));
-  return Math.abs(delta)<.01?null:{hinge,latch,delta};
+const precisionTools=new Set(["door","window","wallRectangle","wallStrip","line","area"]);
+function draftPoint(raw) {
+  const a=drawing.at(-1);
+  const nearAxis=a&&Math.min(Math.abs(raw.x-a.x),Math.abs(raw.y-a.y))*camera.scale<=12;
+  const restrict=a&&$("orthoDraft").checked&&((tool==="area"&&nearAxis)||
+    (drawing.length===1&&["door","wallStrip","line"].includes(tool)));
+  const axis=restrict?(Math.abs(raw.x-a.x)>=Math.abs(raw.y-a.y)?"y":"x"):null;
+  let point=axis?{...raw,[axis]:a[axis]}:raw;
+  if(!$("cornerDraft").checked)return point;
+  let best=10/camera.scale;
+  for(const e of live(current())){
+    if(e.layer!=="Muros"&&e.layer!=="Columnas")continue;
+    for(const corner of e.points){
+      if(axis&&Math.abs(corner[axis]-a[axis])>1e-5)continue;
+      if(drawing.some(q=>distance(q,corner)<1e-5))continue;
+      const gap=distance(point,corner);
+      if(gap<best){best=gap;raw=corner;}
+    }
+  }
+  return best<10/camera.scale?raw:point;
+}
+function draftSwing([hinge,latch]) {
+  return {hinge,latch,delta:doorDirection*Math.PI/2};
+}
+function openingHost(points) {
+  const matches=live(current()).filter(w=>w.layer==="Muros"&&holeRange({points},w));
+  if(matches.length===1)return matches[0].id;
+  return null;
 }
 function doorFootprint(swing,edge) {
   return wallStrip(swing.hinge,swing.latch,edge);
@@ -283,22 +305,29 @@ function updateReviewGuide() {
   $("wallRectangle").textContent=tool==="wallRectangle"?"Reiniciar rectángulo":"Rectángulo";
   $("doorTrace").hidden=activeLayer!=="Puertas"||view!=="review";
   $("doorTrace").textContent=tool==="door"?"Reiniciar puerta":"Trazar puerta abatible";
+  $("windowTrace").hidden=activeLayer!=="Ventanas"||view!=="review";
+  $("windowTrace").textContent=tool==="window"?"Reiniciar ventana":"Trazar ventana";
+  $("windowAccept").hidden=tool!=="window"||!windowDraft;
+  $("doorFlip").hidden=tool!=="door"||drawing.length<2;
   $("doorAccept").hidden=tool!=="door"||!doorDraft;
   const selectedDoor=element();
   $("doorToggle").hidden=view!=="review"||tool!=="select"||selectedDoor?.layer!=="Puertas"||!selectedDoor?.swing;
   $("doorToggle").textContent=closedDoorId===selectedDoor?.id?"Abrir hoja":"Cerrar hoja";
   $("wallTrace").hidden=activeLayer!=="Muros"||view!=="review";
   $("wallTrace").textContent=tool==="wallStrip"?"Reiniciar tramo":"Trazar tramo de muro";
-  guide.hidden=!(view==="review"&&(tool==="area"||tool==="wallStrip"||tool==="wallRectangle"||tool==="door"||tool==="select"));
+  guide.hidden=!(view==="review"&&(tool==="area"||tool==="wallStrip"||tool==="wallRectangle"||tool==="door"||tool==="window"||tool==="select"));
   if(guide.hidden)return;
   if(tool==="wallRectangle"){
     guide.textContent=snappedWalls.length?"Si el rectángulo coincide con el muro, pulsa Añadir a Muros.":
       drawing.length?"Toca la esquina opuesta en diagonal.":"Toca una esquina del muro pequeño.";
+  }else if(tool==="window"){
+    guide.textContent=windowDraft?"Revisa ancho y profundidad. Pulsa Añadir ventana.":
+      drawing.length?"Toca la esquina opuesta en diagonal, sobre la otra cara del muro.":
+      "Toca una esquina de la ventana. Si coincide con una esquina del muro, puedes usarla como referencia.";
   }else if(tool==="door"){
-    guide.textContent=doorDraft?"Revisa el arco y pulsa Añadir puerta.":[
-      "Toca el extremo del vano donde cierra la hoja.",
-      "Sobre ese mismo borde del vano, toca el extremo de la bisagra.",
-      "Toca el extremo libre de la hoja abierta.",
+    guide.textContent=doorDraft?"Revisa el arco. Puedes invertir el giro antes de añadir la puerta.":[
+      "Toca el vértice del vano donde va la bisagra.",
+      "Toca el otro extremo sobre ese mismo borde para ver el arco.",
       "Toca el borde opuesto del vano para marcar su profundidad."
     ][drawing.length];
   }else if(tool==="wallStrip"){
@@ -435,7 +464,7 @@ function navigate(next) {
 }
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>navigate(b.dataset.view));
 function setTool(next) {
-  tool=next;doorDraft=null;drawing=[];transient=null;snappedWalls=[];$("snapReview").hidden=true;
+  tool=next;doorDraft=null;windowDraft=null;doorDirection=1;drawing=[];transient=null;snappedWalls=[];$("snapReview").hidden=true;
   $("gestureResult").hidden=true;
   $("traceMissing").hidden=true;
   if(next!=="brush"&&next!=="lasso"&&next!=="endpoints"){
@@ -450,7 +479,8 @@ function setTool(next) {
     lasso:"Rodea las piezas. Suelta para cerrar la selección.",
     endpoints:activeLayer==="Muros"?"Marca dos puntos sobre el mismo tramo. La imagen define el largo y el grosor.":"Marca dos puntos a lo largo de un elemento, cerca de sus extremos.",
     pan:"Arrastra para mover el plano.",
-    door:"Marca el vano y la hoja en el plano.",
+    door:"Marca la bisagra y el otro extremo del vano.",
+    window:"Marca dos esquinas opuestas de la ventana.",
     wallRectangle:"Marca dos esquinas opuestas del muro.",
     wallStrip:"Traza un tramo recto siguiendo los dos bordes del muro.",
     area:"Marca las esquinas y pulsa «Cerrar superficie».",line:"Marca el inicio y el fin.",
@@ -471,6 +501,18 @@ function newElement(points,kind,name=activeLayer,layer=activeLayer,height=null,d
 }
 $("selectInLayer").onclick=()=>setTool("select");
 $("wallRectangle").onclick=()=>editTool("wallRectangle");
+$("windowTrace").onclick=()=>editTool("window");
+$("windowAccept").onclick=()=>{
+  if(!windowDraft)return;
+  const {points,host}=windowDraft;
+  newElement(points,"area","Ventana","Ventanas",null,{host,base:null});
+  notify(host?"Ventana añadida. Indica altura y antepecho.":"Ventana añadida. Indica altura y antepecho y revisa su muro para el 3D.");
+};
+$("doorFlip").onclick=()=>{
+  doorDirection*=-1;
+  if(doorDraft)doorDraft.swing=draftSwing(drawing);
+  paint();
+};
 $("doorTrace").onclick=()=>editTool("door");
 $("doorAccept").onclick=()=>{
   if(!doorDraft)return;
@@ -1007,16 +1049,29 @@ function planPaint() {
         pen.strokeStyle="#00746c";pen.fillStyle="#00746c";pen.lineWidth=2/camera.scale;
         trace([a,b],false);pen.stroke();pen.font=`${14/camera.scale}px system-ui`;pen.fillText(m+" m",(a.x+b.x)/2,(a.y+b.y)/2-6/camera.scale);
       }
-      if(doorDraft){
+      const draft=doorDraft||windowDraft;
+      if(draft){
         pen.strokeStyle="#174bb8";pen.lineWidth=2/camera.scale;
-        trace(doorDraft.points,true);pen.stroke();paintDoorSwing(doorDraft.swing);
+        trace(draft.points,true);pen.stroke();
       }
-      if(drawing.length&&!doorDraft) {
+      if(tool==="door"&&drawing.length===2){
+        pen.strokeStyle="#174bb8";pen.lineWidth=2/camera.scale;
+        paintDoorSwing(draftSwing(drawing));
+      }
+      if((drawing.length||transient)&&!draft) {
         pen.strokeStyle="#e37714";pen.fillStyle="#e37714";pen.lineWidth=2/camera.scale;
-        const strip=tool==="wallStrip"&&drawing.length===2&&transient
-          ? wallStrip(drawing[0],drawing[1],transient):tool==="wallRectangle"&&transient?diagonalRectangle(drawing[0],transient):null;
-        const preview=strip||(transient&&!(tool==="wallStrip"&&drawing.length===2)?[...drawing,transient]:drawing);
-        trace(preview,Boolean(strip)||(tool==="lasso"&&drawing.length>2));pen.stroke();
+        const cursor=transient&&precisionTools.has(tool)?draftPoint(transient):transient;
+        const rectangle=cursor&&drawing.length===1&&["wallRectangle","window"].includes(tool)
+          ? diagonalRectangle(drawing[0],cursor):null;
+        const strip=cursor&&tool==="wallStrip"&&drawing.length===2
+          ? wallStrip(drawing[0],drawing[1],cursor):null;
+        const preview=rectangle||strip||(cursor&&!(tool==="door"&&drawing.length===2)?[...drawing,cursor]:drawing);
+        trace(preview,Boolean(rectangle||strip)||(tool==="lasso"&&drawing.length>2));pen.stroke();
+        if(cursor&&precisionTools.has(tool)){
+          const r=7/camera.scale;
+          trace([{x:cursor.x-r,y:cursor.y},{x:cursor.x+r,y:cursor.y}],false);pen.stroke();
+          trace([{x:cursor.x,y:cursor.y-r},{x:cursor.x,y:cursor.y+r}],false);pen.stroke();
+        }
         if(tool!=="brush"&&tool!=="lasso"){
           for(const p of drawing){pen.beginPath();pen.arc(p.x,p.y,4/camera.scale,0,Math.PI*2);pen.fill();}
         }
@@ -1346,12 +1401,13 @@ canvas.addEventListener("pointermove",event=>{
       if(distance(p,drag.last)>=2){drawing.push(world(p));drag.last=p;paint();}
       return;
     }
+    if(view==="review"&&precisionTools.has(tool)){transient=world(p);paint();return;}
     const dx=p.x-drag.last.x,dy=p.y-drag.last.y;
     if(drag.moved&&view==="model")orbit+=dx*.008;
     else if(drag.moved&&view==="tour"&&eye)yaw+=dx*.008;
     else if(drag.moved&&tool==="pan"){camera.x+=dx;camera.y+=dy;}
     drag.last=p;paint();
-  } else if(drawing.length){transient=world(p);paint();}
+  } else if(drawing.length||(view==="review"&&precisionTools.has(tool))){transient=world(p);paint();}
 });
 function pinchPosition() {
   const [a,b]=planTouches.values();
@@ -1365,6 +1421,7 @@ function cancelCanvasPointer(event) {
   releasePlanTouch(event);
   if(drag?.pointer===event.pointerId){
     if(drag.selectionGesture){drawing=[];transient=null;paint();}
+    else if(transient&&precisionTools.has(tool)){transient=null;paint();}
     drag=null;
   }
 }
@@ -1374,9 +1431,11 @@ canvas.addEventListener("pointerup",event=>{
   releasePlanTouch(event);
   if(!drag||drag.pointer!==event.pointerId)return;
   const {moved,selectionGesture}=drag;drag=null;
-  const p=world(coords(event));
+  const raw=world(coords(event));
+  const precision=view==="review"&&precisionTools.has(tool);
+  const p=precision?draftPoint(raw):raw;
   if(selectionGesture&&tool===selectionGesture&&view==="review"){drawing.push(p);finishGesture();return;}
-  if(moved)return;
+  if(moved&&!precision)return;
   if(view==="tour") {
     if(!eye){
       const s=scaleInfo(current()).factor, candidate={x:p.x*s,y:p.y*s};
@@ -1400,21 +1459,27 @@ canvas.addEventListener("pointerup",event=>{
     if(!points){notify("Toca una esquina opuesta en diagonal.");return;}
     drawing=[];transient=null;snappedWalls=[points];refresh();return;
   }
+  if(tool==="window"){
+    if(windowDraft)return;
+    if(!drawing.length){drawing=[p];}
+    else{
+      const points=diagonalRectangle(drawing[0],p);
+      if(!points){notify("Toca la esquina opuesta en diagonal para dar profundidad.");return;}
+      windowDraft={points,host:openingHost(points)};
+    }
+    transient=null;updateReviewGuide();paint();return;
+  }
   if(tool==="door"){
     if(doorDraft)return;
     if(drawing.length<2){
       if(drawing.length&&distance(drawing[0],p)*camera.scale<3)return;
       drawing.push(p);
-    }else if(drawing.length===2){
-      const swing=doorSwing(...drawing,p);
-      if(!swing){notify("Marca la punta de la hoja abierta, fuera de la línea del vano.");return;}
-      drawing.push(p);doorDraft=doorOnWall(swing,current());
+      if(drawing.length===2)doorDraft=doorOnWall(draftSwing(drawing),current());
     }else{
-      const swing=doorSwing(...drawing);
+      const swing=draftSwing(drawing);
       const points=doorFootprint(swing,p);
       if(!points){notify("Toca el borde opuesto del vano.");return;}
-      const matches=live(current()).filter(w=>w.layer==="Muros"&&holeRange({points},w));
-      doorDraft={points,host:matches.length===1?matches[0].id:null,swing};
+      doorDraft={points,host:openingHost(points),swing};
     }
     transient=null;updateReviewGuide();paint();return;
   }
