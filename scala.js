@@ -78,6 +78,16 @@ function scaleInfo(l) {
   const spread = (Math.max(...values)-Math.min(...values))/factor;
   return {factor:spread<=.03 ? factor : null,spread};
 }
+function scaleSummary(l) {
+  const count=l.measures.length;
+  const {factor,spread}=scaleInfo(l);
+  if(factor)return count+" cotas registradas · Escala calculada.";
+  if(spread!==null)return count+" cotas registradas · Diferencia del "+(spread*100).toLocaleString("es",{maximumFractionDigits:1})+
+    " % (máximo 3 %). Puedes proponer muros y revisar la escala después.";
+  if(count<2)return count===1?"1 cota registrada · Falta una para calcular la escala.":
+    "Sin cotas · Puedes proponer muros y medir después.";
+  return count+" cotas registradas · Revisa los extremos de las medidas para calcular la escala.";
+}
 function rasterWallBands(inkPixels,width,height,metresPerPixel,vertical) {
   const rows=vertical?width:height, columns=vertical?height:width;
   const span=Math.max(width,height);
@@ -255,10 +265,8 @@ function refresh() {
   $("excludedLabel").hidden=!reviewingPlant||!l.elements.some(e=>e.layer===activeLayer&&e.status==="excluded");
   const imagePlan=reviewingPlant&&Boolean(reference)&&l.sources[sourceIndex]?.kind==="Planta"&&
     sourceIndex===l.sources.findIndex(source=>source.kind==="Planta");
-  const calibrated=Boolean(scaleInfo(l).factor);
   $("wallProposalPanel").hidden=!imagePlan;
-  $("proposalScale").textContent=calibrated?"Escala lista para detectar muros rellenos.":
-    "Coloca dos cotas reales compatibles para calcular la escala.";
+  $("proposalScale").textContent=scaleSummary(l);
   updateReviewGuide();
   $("reviewLayer").value=activeLayer;
   const pieces=live(l).filter(item=>item.layer===activeLayer);
@@ -432,11 +440,6 @@ function proposalFeedback(message) {
 $("proposeWalls").onclick=()=>{
   const l=current(), {factor}=scaleInfo(l);
   if(!reference||$("wallProposalPanel").hidden)return;
-  if(!factor){
-    if(l.measures.length<3)$("measure").click();
-    else proposalFeedback("Las cotas difieren más del 3 %. Usa Borrar cotas y vuelve a medir.");
-    return;
-  }
   try{
     const candidates=detectImageWalls(reference,factor);
     const known=l.elements.filter(e=>e.kind==="area"&&(e.layer==="Muros"||e.fromRasterWalls));
