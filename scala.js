@@ -76,6 +76,68 @@ function scaleInfo(l) {
   const spread = (Math.max(...values)-Math.min(...values))/factor;
   return {factor:spread<=.03 ? factor : null,spread};
 }
+function rasterWallBands(inkPixels,width,height,metresPerPixel,vertical) {
+  const rows=vertical?width:height, columns=vertical?height:width;
+  const minLength=Math.max(9,Math.ceil(.70/metresPerPixel));
+  const minThickness=Math.max(2,Math.ceil(.075/metresPerPixel));
+  const maxThickness=Math.max(minThickness,Math.floor(.55/metresPerPixel));
+  const output=[];
+  let bands=[];
+  function finish(b) {
+    const thickness=b.bottom-b.top, length=b.end-b.start;
+    if(thickness<minThickness||thickness>maxThickness||length<minLength||length<thickness*3)return;
+    output.push(vertical
+      ? {x:b.top,y:b.start,w:thickness,h:length}
+      : {x:b.start,y:b.top,w:length,h:thickness});
+  }
+  for(let row=0;row<rows;row++){
+    const next=[];
+    let start=0;
+    for(let column=0;column<=columns;column++){
+      const dark=column<columns&&inkPixels[vertical?column*width+row:row*width+column];
+      if(dark)continue;
+      if(column-start>=minLength){
+        const match=bands.find(b=>!b.used&&
+          Math.min(b.end,column)-Math.max(b.start,start)>=.72*Math.max(b.end-b.start,column-start));
+        if(match){
+          match.used=true;
+          next.push({start:Math.max(match.start,start),end:Math.min(match.end,column),top:match.top,bottom:row+1});
+        }else next.push({start,end:column,top:row,bottom:row+1});
+      }
+      start=column+1;
+    }
+    bands.filter(b=>!b.used).forEach(finish);
+    bands=next;
+  }
+  bands.forEach(finish);
+  return output;
+}
+function detectImageWalls(image,factor) {
+  const limit=1500;
+  const down=Math.min(1,limit/Math.max(image.naturalWidth,image.naturalHeight));
+  const raster=document.createElement("canvas");
+  raster.width=Math.max(1,Math.round(image.naturalWidth*down));
+  raster.height=Math.max(1,Math.round(image.naturalHeight*down));
+  const ctx=raster.getContext("2d",{willReadFrequently:true});
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,raster.width,raster.height);
+  ctx.drawImage(image,0,0,raster.width,raster.height);
+  const {width,height}=raster;
+  const imagePixels=ctx.getImageData(0,0,width,height).data;
+  const inkPixels=new Uint8Array(width*height);
+  for(let i=0;i<inkPixels.length;i++){
+    const offset=i*4;
+    inkPixels[i]=.2126*imagePixels[offset]+.7152*imagePixels[offset+1]+.0722*imagePixels[offset+2]<115;
+  }
+  const sx=image.naturalWidth/width,sy=image.naturalHeight/height;
+  return [false,true].flatMap(vertical=>rasterWallBands(inkPixels,width,height,factor/down,vertical))
+    .map(b=>rect(b.x*sx,b.y*sy,b.w*sx,b.h*sy));
+}
+function overlapsWall(points,other) {
+  const a=bounds(points),b=bounds(other);
+  const w=Math.min(a.right,b.right)-Math.max(a.x,b.x);
+  const h=Math.min(a.bottom,b.bottom)-Math.max(a.y,b.y);
+  return w>0&&h>0&&w*h>=.75*(a.right-a.x)*(a.bottom-a.y);
+}
 function bounds(points) {
   return {x:Math.min(...points.map(p=>p.x)),y:Math.min(...points.map(p=>p.y)),
     right:Math.max(...points.map(p=>p.x)),bottom:Math.max(...points.map(p=>p.y))};
@@ -153,13 +215,19 @@ function updateReviewGuide() {
       count<3?"Esquinas marcadas: "+count+". Sigue el borde del tramo.":
       "Esquinas marcadas: "+count+". Termina el contorno y pulsa Cerrar superficie.";
   }else{
-    guide.textContent="El plano está cargado como imagen. Para añadir la primera pieza de esta capa, toca Trazar en "+activeLayer+" y marca sus esquinas.";
+    guide.textContent=activeLayer==="Muros"?"Toca Proponer muros para detectar tramos rellenos, o usa Trazar en Muros para dibujar la pieza.":"Para añadir la primera pieza de esta capa, toca Trazar en "+activeLayer+" y marca sus esquinas.";
   }
 }
 function refresh() {
   const l=current(), e=element();
   const reviewingPlant=view==="review" && (!l.sources[sourceIndex]||l.sources[sourceIndex].kind==="Planta");
   $("layerReview").hidden=!reviewingPlant;
+  const imagePlan=reviewingPlant&&Boolean(reference)&&l.sources[sourceIndex]?.kind==="Planta"&&
+    sourceIndex===l.sources.findIndex(source=>source.kind==="Planta");
+  const calibrated=Boolean(scaleInfo(l).factor);
+  $("wallProposalPanel").hidden=!imagePlan;
+  $("proposalScale").textContent=calibrated?"Escala lista para detectar muros rellenos.":
+    "Coloca dos cotas reales compatibles para calcular la escala.";
   updateReviewGuide();
   $("reviewLayer").value=activeLayer;
   const layerCount=live(l).filter(item=>item.layer===activeLayer).length;
@@ -296,6 +364,32 @@ $("line").onclick=()=>editTool("line");
 $("measure").onclick=()=>{
   if(current().measures.length>=3) {notify("Ya hay tres cotas. Puedes borrarlas para volver a medir.");return;}
   editTool("measure");
+};
+$("proposeWalls").onclick=()=>{
+  const l=current(), {factor}=scaleInfo(l);
+  if(!reference||$("wallProposalPanel").hidden)return;
+  if(!factor){
+    if(l.measures.length<3)$("measure").click();
+    else notify("Las cotas difieren más del 3 %. Usa Borrar cotas y vuelve a medir.");
+    return;
+  }
+  try{
+    const candidates=detectImageWalls(reference,factor);
+    const known=l.elements.filter(e=>e.kind==="area"&&(e.layer==="Muros"||e.fromRasterWalls));
+    let added=0;
+    for(const points of candidates){
+      if(known.some(e=>overlapsWall(points,e.points)))continue;
+      const proposal={id:id(),name:"Muro sugerido",layer:"Muros",points,kind:"area",status:"proposed",
+        fromRasterWalls:true,height:null,base:0,host:null};
+      l.elements.push(proposal);known.push(proposal);added++;
+    }
+    if(added){l.coverage=false;invalidate();}
+    activeLayer="Muros";selected=null;reviewHits=[];navigate("review");
+    notify(added?added+" propuestas añadidas a Muros. Revisa y confirma las que correspondan.":
+      "No encontré nuevos tramos oscuros y rellenos. Puedes incorporar los que falten con Trazar en Muros.");
+  }catch{
+    notify("No se pudo analizar esta imagen. Puedes seguir trazando en la app.");
+  }
 };
 $("clearMeasures").onclick=()=>{current().measures=[];invalidate();navigate("review");};
 $("pan").onclick=()=>editTool(tool==="pan"?"select":"pan");
