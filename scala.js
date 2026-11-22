@@ -135,7 +135,7 @@ function checks(l) {
   }
   return {plan,model};
 }
-function invalidate(l=current()) { l.approved=null;scene=null; }
+function invalidate(l=current()) { l.approved=null;scene=null;saveLocal(); }
 function option(parent,text,value) { const opt=new Option(text,value);parent.add(opt); }
 function refresh() {
   const l=current(), e=element();
@@ -319,10 +319,10 @@ for(const [input,key] of [["clearHeight","height"],["pitch","pitch"],["coverage"
 $("validate").onclick=()=>{
   const l=current(), errors=checks(l);
   if(errors.plan.length){notify(errors.plan[0]);return;}
-  l.approved=new Date().toISOString();refresh();notify("Planta validada · "+new Date(l.approved).toLocaleString("es"));
+  l.approved=new Date().toISOString();saveLocal();refresh();notify("Planta validada · "+new Date(l.approved).toLocaleString("es"));
 };
-$("title").onchange=()=>project.title=$("title").value.trim()||"Proyecto sin título";
-$("block").onchange=()=>project.block=$("block").value.trim()||"Bloque A";
+$("title").onchange=()=>{project.title=$("title").value.trim()||"Proyecto sin título";saveLocal();};
+$("block").onchange=()=>{project.block=$("block").value.trim()||"Bloque A";saveLocal();};
 function referenceLoad(reset) {
   const src=current().sources[sourceIndex], token=++sourceToken;
   reference=null;
@@ -339,7 +339,7 @@ function activate(index) {
   project.active=index;sourceIndex=current().sources.findIndex(s=>s.kind==="Planta");selected=null;
   navigate("review");referenceLoad(true);
 }
-$("levels").onchange=()=>activate(Number($("levels").value));
+$("levels").onchange=()=>{activate(Number($("levels").value));if(localProjectKey)saveLocal();};
 for (const key of ["add","repeat"]) $(key).onclick=()=>{
   const name=prompt(key==="add"?"Nombre del nivel distinto":"Nombre del piso repetido",`Nivel ${project.levels.length+1}`);
   if(!name?.trim())return;
@@ -351,11 +351,11 @@ for (const key of ["add","repeat"]) $(key).onclick=()=>{
     result.elements=clone(live(old).filter(e=>e.status==="confirmed"));
     result.elements.forEach(e=>e.status="proposed");
   }
-  project.levels.push(result);activate(project.levels.length-1);
+  project.levels.push(result);activate(project.levels.length-1);saveLocal();
 };
-$("new").onclick=()=>{
-  if(!confirm("¿Abrir un proyecto nuevo? Guarda antes el proyecto actual si quieres conservarlo."))return;
-  project=blank();activate(0);
+$("new").onclick=async()=>{
+  await saves;
+  if(switchProject(blank()))saveLocal();
 };
 $("sources").onchange=()=>{sourceIndex=Number($("sources").value);referenceLoad(true);};
 $("underlay").onchange=paint;
@@ -421,7 +421,7 @@ function fileData(file) {
 $("file").onchange=async()=>{
   const file=$("file").files[0];$("file").value="";
   if(!file)return;
-  const target=current(), purpose=sourcePurpose, ext=file.name.split(".").at(-1).toLowerCase();
+  const owner=project, target=current(), purpose=sourcePurpose, ext=file.name.split(".").at(-1).toLowerCase();
   if(!["dxf","jpg","jpeg","png","webp","svg"].includes(ext)) {
     notify(ext==="dwg"?"Exporta el DWG a DXF ASCII o a una imagen por lámina.":"Exporta la página del PDF a PNG para conservar el encuadre.");return;
   }
@@ -429,6 +429,7 @@ $("file").onchange=async()=>{
   try {
     if(ext==="dxf") {
       const entities=parseDXF(await file.text());
+      if(project!==owner)return;
       if(!entities.length) throw Error("No encontré líneas ni polilíneas rectas en ENTITIES. Exporta una imagen o un DXF simplificado.");
       if(target.elements.length || target.sources.some(s=>s.kind==="Planta"))throw Error("Importa el DXF a un nivel vacío para evitar mezclar coordenadas.");
       target.sources.push({kind:"Planta",name:file.name,data:null});
@@ -438,10 +439,12 @@ $("file").onchange=async()=>{
       if(purpose==="Planta" && target.sources.some(s=>s.kind==="Planta") && !confirm("¿Agregar otra imagen a este nivel? Verifica que use la misma posición y tamaño; la aprobación se reiniciará."))return;
       const mime={png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",webp:"image/webp",svg:"image/svg+xml"}[ext];
       const data=await fileData(new Blob([file],{type:mime}));
+      if(project!==owner)return;
       target.sources.push({kind:purpose,name:file.name,data});
       notify("Lámina incorporada. Conserva el original y traza encima de la referencia.");
     }
-    if(purpose==="Planta"){invalidate(target);target.coverage=false;}
+    if(purpose==="Planta"){target.coverage=false;invalidate(target);}
+    else saveLocal();
     if(target===current()){sourceIndex=target.sources.length-1;navigate("review");referenceLoad(true);}
   } catch(error){notify(error.message||"No se pudo leer el archivo.");}
 };
@@ -450,7 +453,97 @@ function download(name,content,mime) {
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 $("save").onclick=()=>download("MR-Scala-proyecto.json",JSON.stringify(project), "application/json");
-$("open").onclick=()=>$("projectFile").click();
+let localProjectKey=null;
+let projectDatabase;
+let saves=Promise.resolve();
+let saveSequence=0;
+let saveFailed=false;
+
+function openProjectDatabase() {
+  if(!projectDatabase) projectDatabase=new Promise((resolve,reject)=>{
+    const request=indexedDB.open("mr-scala-projects",1);
+    request.onupgradeneeded=()=>request.result.createObjectStore("projects",{keyPath:"key"});
+    request.onsuccess=()=>{
+      const database=request.result;
+      database.onversionchange=()=>{database.close();projectDatabase=null;};
+      resolve(database);
+    };
+    request.onerror=()=>reject(request.error);
+  }).catch(error=>{projectDatabase=null;throw error;});
+  return projectDatabase;
+}
+
+async function projectStore(mode,operation) {
+  const database=await openProjectDatabase();
+  return new Promise((resolve,reject)=>{
+    const transaction=database.transaction("projects",mode);
+    const request=operation(transaction.objectStore("projects"));
+    transaction.oncomplete=()=>resolve(request.result);
+    transaction.onabort=()=>reject(transaction.error||request.error);
+  });
+}
+
+function saveLocal() {
+  if(!localProjectKey)localProjectKey=id();
+  const sequence=++saveSequence;
+  const record={key:localProjectKey,updatedAt:Date.now(),data:clone(project)};
+  $("autosaveStatus").textContent="Guardando en este dispositivo…";
+  saves=saves.then(()=>projectStore("readwrite",store=>store.put(record))).then(()=>{
+    if(sequence!==saveSequence)return;
+    saveFailed=false;
+    $("autosaveStatus").textContent="Guardado en este dispositivo";
+  }).catch(()=>{
+    if(sequence!==saveSequence)return;
+    saveFailed=true;
+    $("autosaveStatus").textContent="No se pudo guardar en el dispositivo. Usa Exportar copia.";
+  });
+  return saves;
+}
+
+function switchProject(next,key=null) {
+  if(saveFailed&&!confirm("El último guardado falló. ¿Cambiar de proyecto de todos modos?"))return false;
+  saveSequence++;
+  saveFailed=false;
+  localProjectKey=key;
+  project=next;
+  activate(project.active);
+  $("autosaveStatus").textContent=key?"Guardado en este dispositivo":"";
+  return true;
+}
+
+$("closeProjects").onclick=()=>$("projectsDialog").close();
+$("importProject").onclick=()=>$("projectFile").click();
+$("open").onclick=async()=>{
+  const dialog=$("projectsDialog"), list=$("projectList"), status=$("projectListStatus");
+  if(!dialog.open)dialog.showModal();
+  list.replaceChildren();
+  status.textContent="Buscando proyectos…";
+  try {
+    await saves;
+    const records=await projectStore("readonly",store=>store.getAll());
+    status.textContent=records.length?"Guardados en este dispositivo":"Todavía no tienes proyectos guardados aquí.";
+    records.sort((a,b)=>b.updatedAt-a.updatedAt);
+    for(const record of records){
+      const row=document.createElement("li"), button=document.createElement("button");
+      button.type="button";
+      button.textContent=record.data.title+" · "+new Date(record.updatedAt).toLocaleDateString("es");
+      button.onclick=async()=>{
+        try {
+          await saves;
+          const latest=await projectStore("readonly",store=>store.get(record.key));
+          if(!latest||!validProject(latest.data))throw Error();
+          if(switchProject(latest.data,record.key))dialog.close();
+        } catch {
+          status.textContent="No se pudo abrir el proyecto guardado.";
+        }
+      };
+      row.append(button);
+      list.append(row);
+    }
+  } catch {
+    status.textContent="El almacenamiento del navegador no está disponible. Puedes importar y exportar copias.";
+  }
+};
 function validProject(p) {
   const point=q=>q && Number.isFinite(q.x)&&Number.isFinite(q.y);
   const height=x=>x===null||(Number.isFinite(x)&&x>=0);
@@ -471,7 +564,11 @@ $("projectFile").onchange=async()=>{
   try {
     const next=JSON.parse(await file.text());
     if(!validProject(next))throw Error();
-    project=next;activate(project.active);notify("Proyecto abierto.");
+    await saves;
+    if(!switchProject(next))return;
+    if($("projectsDialog").open)$("projectsDialog").close();
+    saveLocal();
+    notify("Proyecto abierto.");
   } catch {notify("El archivo no es un proyecto MR Scala compatible.");}
 };
 $("export").onclick=()=>{

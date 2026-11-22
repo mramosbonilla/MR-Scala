@@ -13,3 +13,13 @@
 #groupSelection{margin-top:.4rem}
 #groupSelection label{margin:0}
 .layerReviewBar + .layerReviewBar{margin-top:.4rem}
+
+.autosave-status{min-height:1.2rem;margin:0 0 .65rem;color:var(--muted);font-size:.875rem}
+#projectsDialog{width:min(94vw,32rem);max-height:85vh;border:1px solid #b7cbea;border-radius:.8rem;padding:1rem;color:var(--ink)}
+#projectsDialog::backdrop{background:#10234b99}
+.project-dialog-bar{display:flex;align-items:center;justify-content:space-between;gap:.8rem}
+.project-dialog-bar h2,#projectListStatus{margin:0}
+#projectListStatus{margin-top:.75rem;color:var(--muted)}
+#projectList{padding:0;list-style:none}
+#projectList li+li{margin-top:.45rem}
+#projectList button{display:block;width:100%;text-align:left;overflow-wrap:anywhere}

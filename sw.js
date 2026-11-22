@@ -1,8 +1,8 @@
 const scope = new URL(self.registration.scope);
 const cachePrefix = 'mr-scala:' + scope.pathname + ':';
-const cacheName = cachePrefix + '0.8';
+const cacheName = cachePrefix + '0.9';
 const staticUrls = [
-  './', './index.html', './style.css?v=0.8', './scala.js?v=0.8',
+  './', './index.html', './style.css?v=0.9', './scala.js?v=0.9',
   './manifest.webmanifest', './scala-192.png', './scala-512.png'
 ].map(path => new URL(path, scope).href);
 const assets = new Set(staticUrls);
