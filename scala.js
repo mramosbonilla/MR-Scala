@@ -55,6 +55,8 @@ function demo() {
 }
 let reviewHits = [];
 let marked = new Set();
+let snappedWalls=[];
+let wallImageCache=null;
 let project = demo(), view = "review", activeLayer = "Muros", selected = null, tool = "select";
 let sourceIndex = 0, reference = null, sourceToken = 0, sourcePurpose = "Planta";
 let startProjectFromPlan = false;
@@ -247,6 +249,9 @@ function refresh() {
   const l=current(), e=element();
   const reviewingPlant=view==="review" && (!l.sources[sourceIndex]||l.sources[sourceIndex].kind==="Planta");
   $("layerReview").hidden=!reviewingPlant;
+  $("snapReview").hidden=!reviewingPlant||!snappedWalls.length;
+  $("snapCount").textContent=snappedWalls.length===1?"1 tramo detectado en la imagen":snappedWalls.length+" tramos detectados en la imagen";
+  $("excludedLabel").hidden=!reviewingPlant||!l.elements.some(e=>e.layer===activeLayer&&e.status==="excluded");
   const imagePlan=reviewingPlant&&Boolean(reference)&&l.sources[sourceIndex]?.kind==="Planta"&&
     sourceIndex===l.sources.findIndex(source=>source.kind==="Planta");
   const calibrated=Boolean(scaleInfo(l).factor);
@@ -325,7 +330,7 @@ for (const [group,names] of Object.entries(layers)) {
   }
 }
 $("reviewLayer").onchange=()=>{
-  activeLayer=$("reviewLayer").value;selected=null;reviewHits=[];navigate("review");
+  activeLayer=$("reviewLayer").value;selected=null;reviewHits=[];$("showExcluded").checked=false;navigate("review");
 };
 for(const name of Object.keys(catalog)) option($("catalog"),name,name);
 function navigate(next) {
@@ -348,7 +353,7 @@ function navigate(next) {
 }
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>navigate(b.dataset.view));
 function setTool(next) {
-  tool=next;drawing=[];transient=null;
+  tool=next;drawing=[];transient=null;snappedWalls=[];$("snapReview").hidden=true;
   $("traceMissing").hidden=true;
   if(next!=="brush"&&next!=="lasso"&&next!=="endpoints"){
     marked.clear();
@@ -358,9 +363,9 @@ function setTool(next) {
   document.querySelectorAll("[data-select-tool]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.selectTool===next));
   $("toolHint").textContent={
     select:"Toca una pieza del plano para revisar su capa.",
-    brush:"Pasa el dedo o el mouse sobre las piezas para seleccionarlas.",
+    brush:activeLayer==="Muros"?"Pasa el pincel a lo largo del muro para buscar su franja en el plano.":"Pasa el dedo o el mouse sobre las piezas para seleccionarlas.",
     lasso:"Rodea las piezas. Suelta para cerrar la selección.",
-    endpoints:"Marca dos puntos a lo largo de un elemento, cerca de sus extremos.",
+    endpoints:activeLayer==="Muros"?"Marca dos puntos sobre el mismo tramo. La imagen define el largo y el grosor.":"Marca dos puntos a lo largo de un elemento, cerca de sus extremos.",
     pan:"Arrastra para mover el plano.",
     wallStrip:"Traza un tramo recto siguiendo los dos bordes del muro.",
     area:"Marca las esquinas y pulsa «Cerrar superficie».",line:"Marca el inicio y el fin.",
@@ -510,6 +515,7 @@ $("validate").onclick=()=>{
 $("title").onchange=()=>{project.title=$("title").value.trim()||"Proyecto sin título";saveLocal();};
 $("block").onchange=()=>{project.block=$("block").value.trim()||"Bloque A";saveLocal();};
 function referenceLoad(reset) {
+  snappedWalls=[];
   $("proposalResult").hidden=true;
   const src=current().sources[sourceIndex], token=++sourceToken;
   reference=null;
@@ -868,7 +874,7 @@ function planPaint() {
     const visible=reviewing
       ? [...elements.filter(e=>!isActive(e)&&e.status!=="excluded"),
          ...elements.filter(e=>isActive(e)&&e.status!=="excluded"),
-         ...elements.filter(e=>isActive(e)&&e.status==="excluded")]
+         ...elements.filter(e=>$("showExcluded").checked&&e.layer===activeLayer&&e.status==="excluded")]
       : elements.filter(e=>e.status!=="excluded");
     for(const e of visible) {
       const focus=reviewing&&(e.id===selected||marked.has(e.id)), highlighted=reviewing&&isActive(e);
@@ -877,7 +883,7 @@ function planPaint() {
       pen.strokeStyle=excluded ? "#68768a" : focus ? "#003075" : highlighted ? "#174bb8" : ink(e.layer);
       pen.fillStyle=pen.strokeStyle;
       pen.lineWidth=(focus?3.3:highlighted?2.4:1.1)/camera.scale;
-      pen.setLineDash(reviewing&&excluded?[6/camera.scale,4/camera.scale]:[]);
+      pen.setLineDash([]);
       trace(e.points,e.kind==="area");
       if(e.kind==="area"&&e.layer!=="Contorno"&&!excluded){
         const alpha=pen.globalAlpha;
@@ -888,6 +894,10 @@ function planPaint() {
     }
     pen.globalAlpha=1;pen.setLineDash([]);
     if(view==="review") {
+      for(const points of snappedWalls){
+        pen.strokeStyle="#0b54d5";pen.fillStyle="#0b54d54f";pen.lineWidth=3/camera.scale;
+        trace(points,true);pen.fill();pen.stroke();
+      }
       for(const [a,b,m] of (tool==="measure"||current().showCalibration!==false ? current().measures : [])) {
         pen.strokeStyle="#00746c";pen.fillStyle="#00746c";pen.lineWidth=2/camera.scale;
         trace([a,b],false);pen.stroke();pen.font=`${14/camera.scale}px system-ui`;pen.fillText(m+" m",(a.x+b.x)/2,(a.y+b.y)/2-6/camera.scale);
@@ -1068,12 +1078,75 @@ function suggestTrace() {
 }
 $("traceMissing").onclick=()=>{(activeLayer==="Muros"?$("wallTrace"):$("traceInLayer")).click();$("canvas").scrollIntoView({block:"nearest"});};
 
+$("showExcluded").onchange=()=>{
+  if(!$("showExcluded").checked&&element()?.status==="excluded"){selected=null;reviewHits=[];}
+  refresh();
+};
+$("clearSnap").onclick=()=>{snappedWalls=[];refresh();notify("");};
+$("acceptSnap").onclick=()=>{
+  if(view!=="review"||activeLayer!=="Muros"||!snappedWalls.length)return;
+  const l=current();
+  for(const points of snappedWalls){
+    const proposal={id:id(),name:"Muro del plano",layer:"Muros",points,kind:"area",status:"proposed",
+      fromRasterWalls:true,height:null,base:0,host:null};
+    l.elements.push(proposal);marked.add(proposal.id);
+  }
+  const count=snappedWalls.length;
+  snappedWalls=[];l.coverage=false;invalidate(l);refresh();
+  notify(count===1?"Tramo añadido a Muros.":count+" tramos añadidos a Muros.");
+};
+function wallMatch(a,b,box,tolerance,wholeGesture) {
+  const horizontal=box.right-box.x>=box.bottom-box.y;
+  const start=horizontal?box.x:box.y, end=horizontal?box.right:box.bottom;
+  const near=horizontal?box.y:box.x, far=horizontal?box.bottom:box.right;
+  const u1=horizontal?a.x:a.y,u2=horizontal?b.x:b.y;
+  const v1=horizontal?a.y:a.x,v2=horizontal?b.y:b.x;
+  const length=Math.abs(u2-u1);
+  if(length<.00001||Math.abs(v2-v1)>length*.65)return null;
+  const gap=Math.max(0,near-v1,near-v2,v1-far,v2-far);
+  const overlap=Math.min(end,Math.max(u1,u2))-Math.max(start,Math.min(u1,u2));
+  if(gap>tolerance||overlap<=0)return null;
+  if(wholeGesture&&(overlap/length<.66||Math.min(u1,u2)<start-2*tolerance||Math.max(u1,u2)>end+2*tolerance))return null;
+  if(!wholeGesture&&overlap/length<.4)return null;
+  return gap+(length-overlap)*.4;
+}
+function snapWallsToImage(path,wholeGesture) {
+  const l=current(), {factor}=scaleInfo(l);
+  if(activeLayer!=="Muros"||!reference||!factor||
+    sourceIndex!==l.sources.findIndex(source=>source.kind==="Planta"))return false;
+  if(!wallImageCache||wallImageCache.image!==reference||wallImageCache.factor!==factor){
+    try{
+      const walls=detectImageWalls(reference,factor).map(points=>({points,box:bounds(points)}));
+      wallImageCache={image:reference,factor,walls};
+    }catch{return false;}
+  }
+  const wallMatches=new Set();
+  for(const [a,b] of edges(path,false)){
+    let best=null,bestScore=Infinity;
+    for(const candidate of wallImageCache.walls){
+      const score=wallMatch(a,b,candidate.box,12/camera.scale,wholeGesture);
+      if(score!==null&&score<bestScore){best=candidate;bestScore=score;}
+    }
+    if(best)wallMatches.add(best);
+  }
+  const known=live(l).filter(e=>e.kind==="area"&&e.layer==="Muros");
+  for(const {points} of wallMatches){
+    const existing=known.find(e=>overlapsWall(points,e.points)&&overlapsWall(e.points,points));
+    if(existing)marked.add(existing.id);
+    else if(!snappedWalls.some(prior=>overlapsWall(points,prior)&&overlapsWall(prior,points)))snappedWalls.push(points);
+  }
+  return wallMatches.size>0;
+}
 function finishGesture() {
   const points=drawing;
   drawing=[];transient=null;
   const brush=tool==="brush";
   if(!brush&&(points.length<3||area(points)<=8/(camera.scale*camera.scale))){
     refresh();notify("Rodea la pieza con el dedo y suelta para cerrar el lazo.");
+    return;
+  }
+  if(brush&&snapWallsToImage(points,false)){
+    refresh();notify(snappedWalls.length?"Revisa los tramos detectados y pulsa Añadir a Muros.":"Tramos del plano seleccionados.");
     return;
   }
   const outline=brush?points:[...points,points[0]];
@@ -1087,6 +1160,11 @@ function finishGesture() {
   else suggestTrace();
 }
 function finishEndpoints(a,b) {
+  if(snapWallsToImage([a,b],true)){
+    drawing=[];transient=null;refresh();
+    notify(snappedWalls.length?"Revisa el tramo detectado y pulsa Añadir a Muros.":"Tramo del plano seleccionado.");
+    return;
+  }
   const samples=Array.from({length:25},(_,i)=>({x:a.x+(b.x-a.x)*i/24,y:a.y+(b.y-a.y)*i/24}));
   const tolerance=9/camera.scale;
   const matches=selectionPool().map(e=>{
@@ -1211,7 +1289,7 @@ canvas.addEventListener("pointerup",event=>{
     if(s)newElement(rect(p.x-w/(2*s),p.y-d/(2*s),w/s,d/s),"area",name,layer,h);
     return;
   }
-  const candidates=current().elements.filter(e=>(e.status!=="excluded"||e.layer===activeLayer)&&
+  const candidates=current().elements.filter(e=>(e.status!=="excluded"||($("showExcluded").checked&&e.layer===activeLayer))&&
     (e.kind==="area" ? inside(p,e.points)||e.points.some((a,i)=>nearLine(p,a,e.points[(i+1)%e.points.length])<4/camera.scale)
       : nearLine(p,...e.points)<7/camera.scale));
   candidates.reverse();
