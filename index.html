@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.11"><link rel="apple-touch-icon" sizes="180x180" href="./scala-cover-180.png"><link rel="icon" href="./scala-cover-192.png"><link rel="stylesheet" href="style.css?v=0.11"><script src="scala.js?v=0.11" defer></script></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.12"><link rel="apple-touch-icon" sizes="180x180" href="./scala-cover-180.png"><link rel="icon" href="./scala-cover-192.png"><link rel="stylesheet" href="style.css?v=0.12"><script src="scala.js?v=0.12" defer></script></head>
 <body>
-<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.11</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar proyecto</button><button id="save">Exportar copia</button></div></header>
+<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.12</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar proyecto</button><button id="save">Exportar copia</button></div></header>
 <dialog id="coverDialog" aria-label="MR Scala">
   <img src="./caratula.webp" alt="MR Scala. Del plano al espacio. Fachada frontal en dibujo técnico y maqueta." width="1122" height="1402">
   <div class="cover-actions">
@@ -47,7 +47,7 @@
   </div>
 </div>
 <div class="stage"><canvas id="canvas" tabindex="0" aria-label="Área de dibujo y recorrido"></canvas><div id="empty" hidden></div></div>
-<div class="stageFooter"><span id="state" role="status"></span><div id="move" hidden><button data-move="left">Girar izq.</button><button data-move="back">Retroceder</button><button data-move="forward">Avanzar</button><button data-move="right">Girar der.</button></div></div>
+<div class="stageFooter"><span id="state" role="status"></span><button id="traceMissing" type="button" hidden></button><div id="move" hidden><button data-move="left">Girar izq.</button><button data-move="back">Retroceder</button><button data-move="forward">Avanzar</button><button data-move="right">Girar der.</button></div></div>
 </section>
 <aside class="inspector">
 <h2>Elemento</h2><button id="draw">Trazar elemento</button><button id="line">Trazar línea 2D</button><label>Biblioteca<select id="catalog"></select></label><button id="place">Colocar símbolo</button>

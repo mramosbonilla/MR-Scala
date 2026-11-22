@@ -63,7 +63,10 @@ const canvas = $("canvas"), pen = canvas.getContext("2d");
 const current = () => project.levels[project.active];
 const element = () => current().elements.find(e => e.id === selected);
 const live = l => l.elements.filter(e => e.status !== "excluded");
-const notify = text => $("state").textContent = text;
+const notify = text => {
+  $("state").textContent = text;
+  $("traceMissing").hidden=true;
+};
 const numeric = el => el.value === "" ? null : el.valueAsNumber;
 function scaleInfo(l) {
   const values = l.measures.map(([a,b,m])=>m/distance(a,b));
@@ -220,6 +223,7 @@ function navigate(next) {
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>navigate(b.dataset.view));
 function setTool(next) {
   tool=next;drawing=[];transient=null;
+  $("traceMissing").hidden=true;
   if(next!=="brush"&&next!=="lasso"&&next!=="endpoints"){
     marked.clear();
     $("groupSelection").hidden=true;
@@ -842,18 +846,30 @@ function hitsStroke(e,path,radius) {
   if(path.some(p=>(e.kind==="area"&&inside(p,e.points))||segments.some(([a,b])=>nearLine(p,a,b)<=radius)))return true;
   return edges(path,false).some(([a,b])=>segments.some(([c,d])=>segmentGap(a,b,c,d)<=radius));
 }
+function suggestTrace() {
+  notify("Aquí solo se ve el dibujo de referencia. Marca las esquinas para incorporar la pieza.");
+  $("traceMissing").textContent="Trazar en "+activeLayer;
+  $("traceMissing").hidden=false;
+}
+$("traceMissing").onclick=()=>{$("traceInLayer").click();$("canvas").scrollIntoView({block:"nearest"});};
+
 function finishGesture() {
   const points=drawing;
   drawing=[];transient=null;
-  if(tool==="brush"){
-    marked=new Set(selectionPool().filter(e=>hitsStroke(e,points,8/camera.scale)).map(e=>e.id));
-  }else if(points.length>2&&area(points)>8/(camera.scale*camera.scale)){
-    marked=new Set(selectionPool().filter(e=>
-      e.points.some(p=>inside(p,points))||hitsStroke(e,[...points,points[0]],0)
-    ).map(e=>e.id));
+  const brush=tool==="brush";
+  if(!brush&&(points.length<3||area(points)<=8/(camera.scale*camera.scale))){
+    refresh();notify("Rodea la pieza con el dedo y suelta para cerrar el lazo.");
+    return;
   }
+  const outline=brush?points:[...points,points[0]];
+  const hits=selectionPool().filter(e=>
+    (!brush&&e.points.some(p=>inside(p,points)))||
+    hitsStroke(e,outline,(brush?8:2)/camera.scale)
+  );
+  for(const e of hits)marked.add(e.id);
   refresh();
-  if(!marked.size)notify("No se encontraron piezas clasificables en el trazo.");
+  if(hits.length)notify("Selección acumulada: "+marked.size);
+  else suggestTrace();
 }
 function finishEndpoints(a,b) {
   const samples=Array.from({length:25},(_,i)=>({x:a.x+(b.x-a.x)*i/24,y:a.y+(b.y-a.y)*i/24}));
@@ -864,9 +880,10 @@ function finishEndpoints(a,b) {
     return {e,coverage:gaps.filter(g=>g<=tolerance).length/samples.length,gap:gaps.reduce((sum,g)=>sum+g,0)};
   }).filter(m=>m.coverage>=.68).sort((a,b)=>b.coverage-a.coverage||a.gap-b.gap||
     Number(b.e.layer===activeLayer)-Number(a.e.layer===activeLayer));
-  marked=new Set(matches.length?[matches[0].e.id]:[]);
+  if(matches.length)marked.add(matches[0].e.id);
   drawing=[];transient=null;refresh();
-  if(!marked.size)notify("Marca ambos puntos sobre la misma pieza, cerca de sus extremos.");
+  if(matches.length)notify("Selección acumulada: "+marked.size);
+  else suggestTrace();
 }
 
 canvas.addEventListener("pointerdown",event=>{
@@ -976,6 +993,8 @@ canvas.addEventListener("pointerup",event=>{
     candidates.find(e=>e.status!=="excluded")||candidates[0];
   reviewHits=candidates.map(e=>e.id);
   selected=choice?.id||null;refresh();
+  if(choice)notify("");
+  else if(reference)suggestTrace();
 });
 canvas.addEventListener("wheel",e=>{
   if(view==="model"||view==="tour")return;e.preventDefault();
