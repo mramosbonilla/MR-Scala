@@ -225,14 +225,83 @@ function wallStrip(a,b,c) {
   const dx=normal.x*width,dy=normal.y*width;
   return [a,b,{x:b.x+dx,y:b.y+dy},{x:a.x+dx,y:a.y+dy}];
 }
+function diagonalRectangle(a,b) {
+  if(Math.abs(a.x-b.x)<1e-5||Math.abs(a.y-b.y)<1e-5)return null;
+  return rect(Math.min(a.x,b.x),Math.min(a.y,b.y),Math.abs(a.x-b.x),Math.abs(a.y-b.y));
+}
+function overlappingWallUnit(seeds,level=current()) {
+  const unit=new Set([...seeds].filter(Boolean));
+  if(!unit.size)return unit;
+  const walls=live(level).filter(e=>e.layer==="Muros"&&e.kind==="area"&&wallAxes(e));
+  const queue=walls.filter(e=>unit.has(e.id));
+  for(const wall of queue){
+    for(const other of walls){
+      if(unit.has(other.id))continue;
+      const axes=[wallAxes(wall),wallAxes(other)].flatMap(a=>[a.u,a.v]);
+      const overlap=axes.every(axis=>{
+        const span=e=>e.points.map(p=>p.x*axis.x+p.y*axis.y);
+        const a=span(wall),b=span(other);
+        return Math.min(Math.max(...a),Math.max(...b))-Math.max(Math.min(...a),Math.min(...b))>1e-5;
+      });
+      if(overlap){unit.add(other.id);queue.push(other);}
+    }
+  }
+  return unit;
+}
+let doorDraft=null;
+let closedDoorId=null;
+function doorSwing(latch,hinge,tip) {
+  if(distance(hinge,latch)<1e-5||distance(hinge,tip)<1e-5)return null;
+  const start=Math.atan2(latch.y-hinge.y,latch.x-hinge.x);
+  const end=Math.atan2(tip.y-hinge.y,tip.x-hinge.x);
+  const delta=Math.atan2(Math.sin(end-start),Math.cos(end-start));
+  return Math.abs(delta)<.01?null:{hinge,latch,delta};
+}
+function doorFootprint(swing,edge) {
+  return wallStrip(swing.hinge,swing.latch,edge);
+}
+function doorOnWall(swing,level) {
+  const matches=[];
+  for(const wall of live(level)){
+    if(wall.layer!=="Muros"||!wallAxes(wall))continue;
+    const axes=wallAxes(wall);
+    const offset=p=>(p.x-axes.start.x)*axes.v.x+(p.y-axes.start.y)*axes.v.y;
+    const near=(offset(swing.hinge)+offset(swing.latch))/2;
+    if(Math.abs(near-Math.max(0,Math.min(axes.depth,near)))>axes.depth*.15)continue;
+    if(Math.min(Math.abs(near),Math.abs(near-axes.depth))>axes.depth*.15)continue;
+    const edge={x:swing.hinge.x+axes.v.x*(near<axes.depth/2?axes.depth:-axes.depth),
+      y:swing.hinge.y+axes.v.y*(near<axes.depth/2?axes.depth:-axes.depth)};
+    const points=doorFootprint(swing,edge);
+    if(points&&holeRange({points},wall))matches.push({points,host:wall.id,swing});
+  }
+  return matches.length===1?matches[0]:null;
+}
 function updateReviewGuide() {
   const guide=$("reviewGuide");
   const emptyLayer=!live(current()).some(e=>e.layer===activeLayer);
-    $("wallTrace").hidden=activeLayer!=="Muros"||view!=="review";
+  $("wallRectangle").hidden=activeLayer!=="Muros"||view!=="review";
+  $("wallRectangle").textContent=tool==="wallRectangle"?"Reiniciar rectángulo":"Rectángulo";
+  $("doorTrace").hidden=activeLayer!=="Puertas"||view!=="review";
+  $("doorTrace").textContent=tool==="door"?"Reiniciar puerta":"Trazar puerta abatible";
+  $("doorAccept").hidden=tool!=="door"||!doorDraft;
+  const selectedDoor=element();
+  $("doorToggle").hidden=view!=="review"||tool!=="select"||selectedDoor?.layer!=="Puertas"||!selectedDoor?.swing;
+  $("doorToggle").textContent=closedDoorId===selectedDoor?.id?"Abrir hoja":"Cerrar hoja";
+  $("wallTrace").hidden=activeLayer!=="Muros"||view!=="review";
   $("wallTrace").textContent=tool==="wallStrip"?"Reiniciar tramo":"Trazar tramo de muro";
-  guide.hidden=!(view==="review"&&(tool==="area"||tool==="wallStrip"||tool==="select"));
+  guide.hidden=!(view==="review"&&(tool==="area"||tool==="wallStrip"||tool==="wallRectangle"||tool==="door"||tool==="select"));
   if(guide.hidden)return;
-  if(tool==="wallStrip"){
+  if(tool==="wallRectangle"){
+    guide.textContent=snappedWalls.length?"Si el rectángulo coincide con el muro, pulsa Añadir a Muros.":
+      drawing.length?"Toca la esquina opuesta en diagonal.":"Toca una esquina del muro pequeño.";
+  }else if(tool==="door"){
+    guide.textContent=doorDraft?"Revisa el arco y pulsa Añadir puerta.":[
+      "Toca el extremo del vano donde cierra la hoja.",
+      "Sobre ese mismo borde del vano, toca el extremo de la bisagra.",
+      "Toca el extremo libre de la hoja abierta.",
+      "Toca el borde opuesto del vano para marcar su profundidad."
+    ][drawing.length];
+  }else if(tool==="wallStrip"){
     guide.textContent=[
       "Toca el inicio de uno de los bordes largos del muro.",
       "Toca el otro extremo sobre ese mismo borde.",
@@ -261,7 +330,7 @@ function refresh() {
   const reviewingPlant=view==="review" && (!l.sources[sourceIndex]||l.sources[sourceIndex].kind==="Planta");
   $("layerReview").hidden=!reviewingPlant;
   $("snapReview").hidden=!reviewingPlant||!snappedWalls.length;
-  $("snapCount").textContent=snappedWalls.length===1?"1 tramo detectado en la imagen":snappedWalls.length+" tramos detectados en la imagen";
+  $("snapCount").textContent=tool==="wallRectangle"?"Rectángulo listo para revisar":snappedWalls.length===1?"1 tramo detectado en la imagen":snappedWalls.length+" tramos detectados en la imagen";
   $("excludedLabel").hidden=!reviewingPlant||!l.elements.some(e=>e.layer===activeLayer&&e.status==="excluded");
   const imagePlan=reviewingPlant&&Boolean(reference)&&l.sources[sourceIndex]?.kind==="Planta"&&
     sourceIndex===l.sources.findIndex(source=>source.kind==="Planta");
@@ -285,6 +354,10 @@ function refresh() {
   option(list,"Elige una pieza para ubicarla","");
   pieces.forEach((item,i)=>option(list,(i+1)+". "+item.name+(item.status==="confirmed"?" · confirmada":""),item.id));
   list.value=pieces.some(item=>item.id===selected)?selected:"";
+  if(marked.size){
+    const unit=overlappingWallUnit(marked,l);
+    for(const id of unit)marked.add(id);
+  }
   const grouped=marked.size>0;
   $("groupSelection").hidden=!reviewingPlant||!grouped;
   $("groupCount").textContent=marked.size===1?"1 pieza seleccionada":marked.size+" piezas seleccionadas";
@@ -362,7 +435,7 @@ function navigate(next) {
 }
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>navigate(b.dataset.view));
 function setTool(next) {
-  tool=next;drawing=[];transient=null;snappedWalls=[];$("snapReview").hidden=true;
+  tool=next;doorDraft=null;drawing=[];transient=null;snappedWalls=[];$("snapReview").hidden=true;
   $("gestureResult").hidden=true;
   $("traceMissing").hidden=true;
   if(next!=="brush"&&next!=="lasso"&&next!=="endpoints"){
@@ -377,6 +450,8 @@ function setTool(next) {
     lasso:"Rodea las piezas. Suelta para cerrar la selección.",
     endpoints:activeLayer==="Muros"?"Marca dos puntos sobre el mismo tramo. La imagen define el largo y el grosor.":"Marca dos puntos a lo largo de un elemento, cerca de sus extremos.",
     pan:"Arrastra para mover el plano.",
+    door:"Marca el vano y la hoja en el plano.",
+    wallRectangle:"Marca dos esquinas opuestas del muro.",
     wallStrip:"Traza un tramo recto siguiendo los dos bordes del muro.",
     area:"Marca las esquinas y pulsa «Cerrar superficie».",line:"Marca el inicio y el fin.",
     measure:"Marca los dos extremos de una distancia conocida.",
@@ -390,11 +465,25 @@ function setTool(next) {
   updateReviewGuide();paint();
 }
 function editTool(next) { if(view!=="review")navigate("review");setTool(next); }
-function newElement(points,kind,name=activeLayer,layer=activeLayer,height=null) {
-  const e={id:id(),name,layer,points,height,base:0,host:null,status:"proposed",kind};
+function newElement(points,kind,name=activeLayer,layer=activeLayer,height=null,details={}) {
+  const e={id:id(),name,layer,points,height,base:0,host:null,status:"proposed",kind,...details};
   current().elements.push(e); selected=e.id; activeLayer=layer; invalidate();setTool("select");refresh();
 }
 $("selectInLayer").onclick=()=>setTool("select");
+$("wallRectangle").onclick=()=>editTool("wallRectangle");
+$("doorTrace").onclick=()=>editTool("door");
+$("doorAccept").onclick=()=>{
+  if(!doorDraft)return;
+  const {points,host,swing}=doorDraft;
+  newElement(points,"area","Puerta abatible","Puertas",null,{host,swing});
+  notify(host?"Puerta añadida. Indica su altura.":"Puerta añadida. Indica su altura y vincula el muro del vano para el 3D.");
+};
+$("doorToggle").onclick=()=>{
+  const e=element();
+  if(!e?.swing)return;
+  closedDoorId=closedDoorId===e.id?null:e.id;
+  updateReviewGuide();paint();
+};
 $("wallTrace").onclick=()=>editTool("wallStrip");
 document.querySelectorAll("[data-select-tool]").forEach(b=>b.onclick=()=>{
   marked.clear();selected=null;reviewHits=[];setTool(b.dataset.selectTool);refresh();
@@ -791,7 +880,8 @@ function validProject(p) {
       Array.isArray(l.sources)&&l.sources.every(s=>typeof s.name==="string" && ["Planta","Corte","Fachada"].includes(s.kind)&&imageData(s.data)) &&
       Array.isArray(l.elements)&&l.elements.every(e=>typeof e.id==="string"&&typeof e.name==="string"&&category.includes(e.layer)&&
         ["confirmed","proposed","excluded"].includes(e.status)&&height(e.height)&&height(e.base)&&
-        ["area","line"].includes(e.kind)&&Array.isArray(e.points)&&e.points.length>=(e.kind==="area"?3:2)&&e.points.every(point)) &&
+        ["area","line"].includes(e.kind)&&Array.isArray(e.points)&&e.points.length>=(e.kind==="area"?3:2)&&e.points.every(point)&&
+        (e.swing==null||(point(e.swing.hinge)&&point(e.swing.latch)&&Number.isFinite(e.swing.delta)))) &&
       Array.isArray(l.measures)&&l.measures.length<=3&&l.measures.every(m=>Array.isArray(m)&&point(m[0])&&point(m[1])&&positive(m[2])));
 }
 $("projectFile").onchange=async()=>{
@@ -861,6 +951,14 @@ function trace(points,closed) {
   points.forEach((p,i)=>i?pen.lineTo(p.x,p.y):pen.moveTo(p.x,p.y));
   if(closed)pen.closePath();
 }
+function paintDoorSwing(swing,closed=false) {
+  const {hinge,latch,delta}=swing;
+  const radius=distance(hinge,latch);
+  const start=Math.atan2(latch.y-hinge.y,latch.x-hinge.x);
+  pen.beginPath();pen.arc(hinge.x,hinge.y,radius,start,start+delta,delta<0);pen.stroke();
+  const angle=closed?start:start+delta;
+  trace([hinge,{x:hinge.x+radius*Math.cos(angle),y:hinge.y+radius*Math.sin(angle)}],false);pen.stroke();
+}
 function planPaint() {
   const {w,h}=size(), src=current().sources[sourceIndex];
   const overlay=!src || src.kind==="Planta";
@@ -875,14 +973,15 @@ function planPaint() {
   }
   if(overlay) {
     const elements=current().elements;
-    const isActive=e=>e.layer===activeLayer||e.id===selected||marked.has(e.id);
+    const focusIds=reviewing?overlappingWallUnit([...marked,selected]):new Set();
+    const isActive=e=>e.layer===activeLayer||focusIds.has(e.id);
     const visible=reviewing
       ? [...elements.filter(e=>!isActive(e)&&e.status!=="excluded"),
          ...elements.filter(e=>isActive(e)&&e.status!=="excluded"),
          ...elements.filter(e=>$("showExcluded").checked&&e.layer===activeLayer&&e.status==="excluded")]
       : elements.filter(e=>e.status!=="excluded");
     for(const e of visible) {
-      const focus=reviewing&&(e.id===selected||marked.has(e.id)), highlighted=reviewing&&isActive(e);
+      const focus=focusIds.has(e.id), highlighted=reviewing&&isActive(e);
       const excluded=e.status==="excluded";
       pen.globalAlpha=excluded ? .6 : reviewing&&!highlighted ? (comparing ? .34 : .42) : 1;
       pen.strokeStyle=excluded ? "#68768a" : focus ? "#003075" : highlighted ? "#174bb8" : ink(e.layer);
@@ -896,6 +995,7 @@ function planPaint() {
         pen.fill();pen.globalAlpha=alpha;
       }
       pen.stroke();
+      if(e.layer==="Puertas"&&e.swing&&!excluded)paintDoorSwing(e.swing,closedDoorId===e.id);
     }
     pen.globalAlpha=1;pen.setLineDash([]);
     if(view==="review") {
@@ -907,10 +1007,14 @@ function planPaint() {
         pen.strokeStyle="#00746c";pen.fillStyle="#00746c";pen.lineWidth=2/camera.scale;
         trace([a,b],false);pen.stroke();pen.font=`${14/camera.scale}px system-ui`;pen.fillText(m+" m",(a.x+b.x)/2,(a.y+b.y)/2-6/camera.scale);
       }
-      if(drawing.length) {
+      if(doorDraft){
+        pen.strokeStyle="#174bb8";pen.lineWidth=2/camera.scale;
+        trace(doorDraft.points,true);pen.stroke();paintDoorSwing(doorDraft.swing);
+      }
+      if(drawing.length&&!doorDraft) {
         pen.strokeStyle="#e37714";pen.fillStyle="#e37714";pen.lineWidth=2/camera.scale;
         const strip=tool==="wallStrip"&&drawing.length===2&&transient
-          ? wallStrip(drawing[0],drawing[1],transient):null;
+          ? wallStrip(drawing[0],drawing[1],transient):tool==="wallRectangle"&&transient?diagonalRectangle(drawing[0],transient):null;
         const preview=strip||(transient&&!(tool==="wallStrip"&&drawing.length===2)?[...drawing,transient]:drawing);
         trace(preview,Boolean(strip)||(tool==="lasso"&&drawing.length>2));pen.stroke();
         if(tool!=="brush"&&tool!=="lasso"){
@@ -1098,10 +1202,11 @@ $("acceptSnap").onclick=()=>{
   const l=current();
   for(const points of snappedWalls){
     const proposal={id:id(),name:"Muro del plano",layer:"Muros",points,kind:"area",status:"proposed",
-      fromRasterWalls:true,height:null,base:0,host:null};
+      fromRasterWalls:tool!=="wallRectangle",height:null,base:0,host:null};
     l.elements.push(proposal);marked.add(proposal.id);
   }
   const count=snappedWalls.length;
+  if(tool==="wallRectangle")drawing=[];
   snappedWalls=[];l.coverage=false;invalidate(l);refresh();
   gestureFeedback(count===1?"Tramo añadido a Muros.":count+" tramos añadidos a Muros.");
 };
@@ -1287,6 +1392,31 @@ canvas.addEventListener("pointerup",event=>{
     if(distance(drawing[0],p)>=5/camera.scale)finishEndpoints(drawing[0],p);
     else gestureFeedback("Toca el segundo punto más lejos, sobre el mismo muro.");
     return;
+  }
+  if(tool==="wallRectangle"){
+    if(snappedWalls.length)return;
+    if(!drawing.length){drawing=[p];updateReviewGuide();paint();return;}
+    const points=diagonalRectangle(drawing[0],p);
+    if(!points){notify("Toca una esquina opuesta en diagonal.");return;}
+    drawing=[];transient=null;snappedWalls=[points];refresh();return;
+  }
+  if(tool==="door"){
+    if(doorDraft)return;
+    if(drawing.length<2){
+      if(drawing.length&&distance(drawing[0],p)*camera.scale<3)return;
+      drawing.push(p);
+    }else if(drawing.length===2){
+      const swing=doorSwing(...drawing,p);
+      if(!swing){notify("Marca la punta de la hoja abierta, fuera de la línea del vano.");return;}
+      drawing.push(p);doorDraft=doorOnWall(swing,current());
+    }else{
+      const swing=doorSwing(...drawing);
+      const points=doorFootprint(swing,p);
+      if(!points){notify("Toca el borde opuesto del vano.");return;}
+      const matches=live(current()).filter(w=>w.layer==="Muros"&&holeRange({points},w));
+      doorDraft={points,host:matches.length===1?matches[0].id:null,swing};
+    }
+    transient=null;updateReviewGuide();paint();return;
   }
   if(tool==="wallStrip"){
     if(drawing.length===2){
