@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icons/scala-192.png"><link rel="icon" href="./icons/scala-192.png"><link rel="stylesheet" href="style.css?v=0.8"><script src="scala.js?v=0.8" defer></script></head>
+<body>
+<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.8</span><div class="files"><button id="new">Nuevo</button><button id="open">Abrir proyecto</button><button id="save">Guardar proyecto</button></div></header>
+<main>
+<section class="project"><label>Proyecto<input id="title" value="Estudio de muestra"></label><label>Bloque<input id="block"></label><label>Nivel<select id="levels"></select></label><button id="add">Nuevo nivel</button><button id="repeat">Repetir nivel</button></section>
+<nav aria-label="Vistas"><button data-view="review" aria-pressed="true">Revisión de capas</button><button data-view="plan">Planta 2D</button><button data-view="model">Modelo 3D</button><button data-view="tour">Recorrido</button></nav>
+<div class="workspace">
+<aside>
+<h2>Fuentes</h2><button class="primary" id="source">Importar plano</button><input id="file" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,.dxf,.pdf,.dwg" hidden><input id="projectFile" type="file" accept=".json" hidden>
+<select id="sources" aria-label="Lámina visible"></select><button id="attach">Otra lámina</button>
+<label class="check"><input id="underlay" type="checkbox" checked> Mostrar referencia</label>
+
+</aside>
+<section class="drawing">
+<div class="toolbar"><span id="toolHint">Elige una capa y selecciona un elemento.</span><div><button id="minus" aria-label="Alejar">−</button><button id="plus" aria-label="Acercar">+</button><button id="fit">Encuadrar</button><button id="pan">Mover vista</button></div></div>
+<div id="reviewReference" class="reviewReference" hidden><label for="referenceOpacity">Visibilidad del plano de fondo <output id="referenceValue" for="referenceOpacity">72 %</output></label><input id="referenceOpacity" type="range" min="30" max="100" value="72"></div>
+<div id="layerReview" class="layerReview" hidden>
+  <div class="layerReviewBar"><label>Capa en revisión <select id="reviewLayer"></select></label><span id="reviewLayerCount"></span></div>
+  <div class="layerReviewBar"><button type="button" id="selectInLayer" aria-pressed="true">Toque</button><button type="button" data-select-tool="brush">Pincel</button><button type="button" data-select-tool="lasso">Lazo</button><button type="button" data-select-tool="endpoints">Dos puntos</button><button type="button" id="traceInLayer">Trazar elemento</button></div>
+  <div id="groupSelection" class="layerReviewBar" hidden>
+    <span id="groupCount" role="status"></span>
+    <label>Capa de destino <select id="groupDestination"></select></label>
+    <button id="applyGroup" type="button">Mover selección</button>
+    <button id="clearGroup" type="button">Limpiar selección</button>
+  </div>
+  <div id="reviewSelection" hidden>
+    <label for="reviewCandidate">Elemento seleccionado</label><select id="reviewCandidate"></select>
+    <button type="button" id="addToLayer"></button>
+    <button type="button" id="removeFromLayer">Pasar a Pendiente</button>
+    <label for="reviewDestination">Mover a otra capa</label><select id="reviewDestination"></select>
+  </div>
+</div>
+<div class="stage"><canvas id="canvas" tabindex="0" aria-label="Área de dibujo y recorrido"></canvas><div id="empty" hidden></div></div>
+<div class="stageFooter"><span id="state" role="status"></span><div id="move" hidden><button data-move="left">Girar izq.</button><button data-move="back">Retroceder</button><button data-move="forward">Avanzar</button><button data-move="right">Girar der.</button></div></div>
+</section>
+<aside class="inspector">
+<h2>Elemento</h2><button id="draw">Trazar elemento</button><button id="line">Trazar línea 2D</button><label>Biblioteca<select id="catalog"></select></label><button id="place">Colocar símbolo</button>
+<div id="selection" hidden>
+<label>Nombre<input id="elementName"></label><label>Capa<select id="elementLayer"></select></label><label>Altura del elemento (m)<input id="height" type="number" min="0" step=".01"></label><label>Altura de base (m)<input id="base" type="number" min="0" step=".01"></label><label id="hostLabel">Muro del vano<select id="host"></select></label><button id="approveElement">Confirmar elemento</button><button id="remove">Excluir elemento</button>
+</div>
+<h2>Escala y alturas</h2><button id="measure">Medir referencia</button><button id="clearMeasures">Borrar cotas</button><div id="measures"></div>
+<label>Altura libre (m)<input id="clearHeight" type="number" min="0" step=".01"></label><label>Distancia piso a piso (m)<input id="pitch" type="number" min="0" step=".01"></label>
+<label class="check"><input id="coverage" type="checkbox"> Revisé la lámina completa y tracé el contorno, la estructura y todos los vanos.</label>
+<button id="validate" class="primary">Validar planta</button><button id="export">Exportar planta SVG</button><div id="issues"></div>
+</aside>
+</div>
+</main></body></html>

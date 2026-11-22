@@ -1,0 +1,16 @@
+{
+  "id": "./",
+  "name": "MR Scala",
+  "short_name": "MR Scala",
+  "description": "Estudio de planos por capas",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#10234b",
+  "background_color": "#eaf1ff",
+  "icons": [
+    {"src": "./icons/scala-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "./icons/scala-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
+  ]
+}
