@@ -88,7 +88,7 @@ let project = demo(), view = "review", activeLayer = "Muros", selected = null, t
 let sourceIndex = 0, reference = null, sourceToken = 0, sourcePurpose = "Planta";
 let startProjectFromPlan = false;
 let drawing = [], transient = null, camera = {x:0,y:0,scale:1}, drag = null, scene = null;
-let eye = null, yaw = 0, orbit = -.65;
+let eye = null, yaw = 0, orbit = -.65, modelTop=false, modelZoom=1;
 const canvas = $("canvas"), pen = canvas.getContext("2d");
 const current = () => project.levels[project.active];
 const element = () => current().elements.find(e => e.id === selected);
@@ -516,7 +516,7 @@ function navigate(next) {
     if(!nextScene.faces.length){notify("Traza un muro, contorno o pieza para abrir la vista 3D.");return;}
     scene=nextScene;
     if(next==="model")notify(preliminary?
-      "Vista previa 3D · "+(scene.calibrated?"Escala del plano. ":"Escala aproximada. ")+"En ámbar: piezas provisionales o con datos pendientes.":
+      "Vista previa 3D · "+(scene.calibrated?"Escala del plano. ":"Escala aproximada. ")+"Ámbar: datos pendientes. Usa Desde arriba para ver la planta completa.":
       "Vista 3D de la planta validada.");
     if(next==="tour") {setTool("start");eye=null;}
   } else setTool("select");
@@ -526,6 +526,7 @@ function navigate(next) {
     if(sourceIndex!==primary){sourceIndex=primary;referenceLoad(true);}
   }
   for(const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-pressed",b.dataset.view===view);
+  $("modelTop").hidden=next!=="model";
   $("move").hidden=next!=="tour";refresh();
 }
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>navigate(b.dataset.view));
@@ -1089,6 +1090,7 @@ function fit() {
   paint();
 }
 function zoom(by,x=size().w/2,y=size().h/2) {
+  if(view==="model"){modelZoom=Math.max(.5,Math.min(4,modelZoom*by));paint();return;}
   scalePlanAt(by,{x,y},{x,y});
 }
 function scalePlanAt(by,from,to) {
@@ -1099,7 +1101,14 @@ function scalePlanAt(by,from,to) {
   camera.scale=scale;
   paint();
 }
-$("fit").onclick=()=>view==="model"?(orbit=-.65,paint()):fit();
+$("fit").onclick=()=>view==="model"?(modelZoom=1,paint()):fit();
+$("modelTop").onclick=()=>{
+  modelTop=!modelTop;
+  modelZoom=1;
+  $("modelTop").textContent=modelTop?"Vista en perspectiva":"Desde arriba";
+  $("modelTop").setAttribute("aria-pressed",modelTop);
+  paint();
+};
 $("plus").onclick=()=>zoom(1.25);
 $("minus").onclick=()=>zoom(.8);
 function trace(points,closed) {
@@ -1301,7 +1310,7 @@ function fixtureModel(form,b,base,height,prism) {
 }
 function makeScene(l,preliminary=false) {
   const calibrated=scaleInfo(l).factor;
-  const elements=live(l).filter(e=>!e.reviewSymbol), solids=[], faces=[], floors=[];
+  const elements=live(l).filter(e=>!e.reviewSymbol), solids=[], faces=[], floors=[], openings=[];
   const drawingBounds=bounds(elements.flatMap(e=>e.points));
   const factor=calibrated||8/(Math.max(1,drawingBounds.right-drawingBounds.x,drawingBounds.bottom-drawingBounds.y));
   const wallHeight=positive(l.height)?l.height:2.6;
@@ -1318,6 +1327,43 @@ function makeScene(l,preliminary=false) {
     faces.push({p:upper,fill,pending,side:false});
     if(solid && bottom<1.55 && top>.12)solids.push(points);
   }
+  const holesByWall=new Map();
+  for(const e of elements.filter(opening)){
+    const door=e.layer==="Puertas";
+    const wall=elements.find(w=>w.layer==="Muros"&&w.id===e.host);
+    const range=wall&&e.kind==="area"?holeRange(e,wall):null;
+    const base=e.base??(door?0:Math.min(.9,wallHeight*.4));
+    const height=e.height??Math.min(door?2.05:1.1,wallHeight-base);
+    const valid=Number.isFinite(base)&&base>=0&&positive(height)&&base+height<=wallHeight+1e-9;
+    pending=preliminary&&(!calibrated||!range||e.status!=="confirmed"||!positive(e.height)||e.base===null||!positive(l.height));
+    const fill=door?"#a47756":"#63b8d5";
+    const footprint=e.kind==="area"?wallAxes(e):null;
+    let axis=e.swing?[e.swing.hinge,e.swing.latch]:
+      footprint?[footprint.start,{x:footprint.start.x+footprint.u.x*footprint.length,
+        y:footprint.start.y+footprint.u.y*footprint.length}]:e.points.slice(0,2);
+    if(range&&valid){
+      const {start,u,v,depth}=wallAxes(wall);
+      axis=range.map(d=>({x:start.x+u.x*d+v.x*depth/2,y:start.y+u.y*d+v.y*depth/2}));
+      const holes=holesByWall.get(wall.id)??[];
+      holes.push({range,base,top:base+height});
+      holesByWall.set(wall.id,holes);
+    }
+    const [a,b]=metric(axis);
+    openings.push({points:[a,b],fill,pending,unlinked:!range||!valid,z:pending&&!range?wallHeight+.04:base+.05});
+    if(!valid||distance(a,b)<1e-6)continue;
+    let tip=b, hinge=a;
+    if(door&&e.swing){
+      [hinge]=metric([e.swing.hinge]);
+      const angle=Math.atan2(e.swing.latch.y-e.swing.hinge.y,e.swing.latch.x-e.swing.hinge.x)+(closedDoorId===e.id?0:e.swing.delta);
+      const width=distance(e.swing.hinge,e.swing.latch)*factor;
+      tip={x:hinge.x+width*Math.cos(angle),y:hinge.y+width*Math.sin(angle)};
+    }
+    const length=distance(hinge,tip);
+    if(length<1e-6)continue;
+    const edge={x:hinge.x-(tip.y-hinge.y)*.035/length,y:hinge.y+(tip.x-hinge.x)*.035/length};
+    const panel=wallStrip(hinge,tip,edge);
+    if(panel)prism(panel,base,base+height,fill,false);
+  }
   for(const e of elements.filter(e=>e.kind==="area")) {
     const points=metric(e.points);
     pending=preliminary&&(!calibrated||e.status!=="confirmed"||
@@ -1330,16 +1376,14 @@ function makeScene(l,preliminary=false) {
     }
     if(opening(e))continue;
     if(structural(e)) {
-      const holes=elements.filter(item=>opening(item)&&item.host===e.id&&positive(item.height)&&
-        Number.isFinite(item.base)&&item.base>=0&&item.base+item.height<=wallHeight+1e-9&&holeRange(item,e));
-      if(!holes.length){prism(points,0,wallHeight,"#9fbacb");continue;}
+      const holes=holesByWall.get(e.id);
+      if(!holes?.length){prism(points,0,wallHeight,"#9fbacb");continue;}
       const a=wallAxes(e);
-      const ranges=holes.map(h=>({x:holeRange(h,e),h})).filter(r=>r.x);
-      const splits=[...new Set([0,a.length,...ranges.flatMap(r=>r.x)])].sort((x,y)=>x-y);
+      const splits=[...new Set([0,a.length,...holes.flatMap(h=>h.range)])].sort((x,y)=>x-y);
       for(let i=1;i<splits.length;i++){
         const low=splits[i-1],high=splits[i],center=(low+high)/2;
         const slice=metric([[low,0],[high,0],[high,a.depth],[low,a.depth]].map(([u,v])=>({x:a.start.x+a.u.x*u+a.v.x*v,y:a.start.y+a.u.y*u+a.v.y*v})));
-        const gaps=ranges.filter(r=>center>r.x[0]&&center<r.x[1]).map(r=>[r.h.base,r.h.base+r.h.height]).sort((x,y)=>x[0]-y[0]);
+        const gaps=holes.filter(h=>center>h.range[0]&&center<h.range[1]).map(h=>[h.base,h.top]).sort((x,y)=>x[0]-y[0]);
         let z=0;
         for(const [bottom,top] of gaps){prism(slice,z,bottom,"#9fbacb");z=Math.max(z,top);}
         prism(slice,z,wallHeight,"#9fbacb");
@@ -1354,7 +1398,7 @@ function makeScene(l,preliminary=false) {
       if(e.layer!=="Accesorios"&&base<1.55&&base+height>.12)solids.push(points);
     }else prism(points,base,base+height,ink(e.layer),e.layer!=="Accesorios");
   }
-  return {faces,floors,solids,calibrated,b:bounds([...floors.flat(),...faces.flatMap(f=>f.p)])};
+  return {faces,floors,solids,openings,calibrated,b:bounds([...faces.flatMap(f=>f.p),...openings.flatMap(o=>o.points)])};
 }
 function projectFace(face,transform,screen,perspective) {
   let points=face.p.map(transform);
@@ -1378,18 +1422,22 @@ function renderScene(w,h) {
   if(walk&&!eye){planPaint();return;}
   if(!scene)return;
   const b=scene.b, cx=(b.x+b.right)/2, cy=(b.y+b.bottom)/2;
-  const tallest=scene.faces.reduce((max,face)=>Math.max(max,...face.p.map(p=>p.z)),0);
-  const ratio=Math.min(w,h)*.69/Math.max(1,b.right-b.x,b.bottom-b.y,tallest*1.6);
   const focal=Math.min(w,h)*.76, cs=Math.cos(walk?yaw:orbit),sn=Math.sin(walk?yaw:orbit);
   const transform=walk ? p=>{
     const x=p.x-eye.x,y=p.y-eye.y;
     return {x:-x*sn+y*cs,y:Math.min(1.55,current().height*.82)-p.z,d:x*cs+y*sn};
-  } : p=>{
+  } : modelTop ? p=>({x:p.x-cx,y:p.y-cy,d:-p.z}) : p=>{
     const x=p.x-cx,y=p.y-cy,depth=x*sn+y*cs;
     return {x:x*cs-y*sn,y:depth*.55-p.z*.9,d:-depth-p.z*.55};
   };
+  const guides=walk?[]:scene.openings.filter(o=>modelTop||o.unlinked);
+  const frame=walk?null:bounds([
+    ...scene.faces.flatMap(f=>f.p.map(transform)),
+    ...guides.flatMap(o=>o.points.map(p=>transform({...p,z:o.z})))
+  ]);
+  const ratio=walk?1:modelZoom*Math.min(w*.9/Math.max(.01,frame.right-frame.x),h*.86/Math.max(.01,frame.bottom-frame.y));
   const screen=walk ? p=>({x:w/2+p.x*focal/p.d,y:h/2+p.y*focal/p.d}) :
-    p=>({x:w/2+p.x*ratio,y:h*.61+p.y*ratio});
+    p=>({x:w/2+(p.x-(frame.x+frame.right)/2)*ratio,y:h/2+(p.y-(frame.y+frame.bottom)/2)*ratio});
   const gradient=pen.createLinearGradient(0,0,0,h);gradient.addColorStop(0,"#d8eaf4");gradient.addColorStop(1,"#f8fafc");
   pen.fillStyle=gradient;pen.fillRect(0,0,w,h);
   const faces=scene.faces.map(f=>projectFace(f,transform,screen,walk)).filter(Boolean).sort((a,b)=>b.depth-a.depth);
@@ -1397,6 +1445,11 @@ function renderScene(w,h) {
     trace(face.xy,true);pen.fillStyle=face.fill;pen.fill();
     if(face.side){pen.fillStyle="#13263818";pen.fill();}
     pen.lineWidth=.75;pen.strokeStyle=face.pending?"#a56730":"#31475742";pen.stroke();
+  }
+  for(const guide of guides){
+    const points=guide.points.map(p=>screen(transform({...p,z:guide.z})));
+    trace(points,false);pen.lineWidth=5;pen.strokeStyle=guide.pending?"#a56730":"#243c52";pen.stroke();
+    pen.lineWidth=3;pen.strokeStyle=guide.fill;pen.stroke();
   }
   if(walk){pen.strokeStyle="#20374a";pen.lineWidth=1;trace([{x:w/2-6,y:h/2},{x:w/2+6,y:h/2}],false);pen.stroke();}
 }
