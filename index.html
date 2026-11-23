@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.34"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.34"><script src="scala.js?v=0.34" defer></script></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.35"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.35"><script src="scala.js?v=0.35" defer></script></head>
 <body>
-<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.34</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar</button><button id="save">Exportar copia</button></div></header>
+<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.35</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar</button><button id="save">Exportar copia</button></div></header>
 <dialog id="coverDialog" aria-label="MR Scala">
   <img src="./caratula.webp" alt="MR Scala. Del plano al espacio. Fachada frontal en dibujo técnico y maqueta." width="1122" height="1402">
   <div class="cover-actions">
@@ -31,7 +31,7 @@
 <nav aria-label="Vistas"><button data-view="review" aria-pressed="true">Revisión de capas</button><button data-view="plan">Planta 2D</button><button data-view="model">Vista 3D</button><button data-view="tour">Recorrido</button></nav>
 <div class="workspace">
 <section class="drawing">
-<div class="toolbar"><span id="toolHint">Elige una capa y selecciona un elemento.</span><div><button id="minus" aria-label="Alejar">−</button><button id="plus" aria-label="Acercar">+</button><button id="fit">Encuadrar</button><button id="modelTop" hidden aria-pressed="false">Desde arriba</button><button id="pan">Mover vista</button></div></div>
+<div class="toolbar"><span id="toolHint">Elige una capa y selecciona un elemento.</span><div><button id="minus" aria-label="Alejar">−</button><button id="plus" aria-label="Acercar">+</button><button id="fit">Encuadrar</button><button id="slabSettings" hidden>Placa del nivel</button><button id="modelTop" hidden aria-pressed="false">Desde arriba</button><button id="pan">Mover vista</button></div></div>
 <div id="reviewReference" class="reviewReference" hidden><label for="referenceOpacity">Visibilidad del plano de fondo <output id="referenceValue" for="referenceOpacity">72 %</output></label><input id="referenceOpacity" type="range" min="30" max="100" value="72"></div>
 <div id="layerReview" class="layerReview" hidden>
   <details class="editor-section" id="wallProposals"><summary>Detección automática de muros</summary>
@@ -109,6 +109,7 @@
 <details class="editor-section" id="levelInspector"><summary>Escala y alturas del nivel</summary>
 <button id="measure">Medir referencia</button><button id="clearMeasures">Borrar cotas</button><div id="measures"></div>
 <label>Altura libre (m)<input id="clearHeight" type="number" min="0" step=".01"></label><label>Distancia piso a piso (m)<input id="pitch" type="number" min="0" step=".01"></label>
+<label>¿Qué espesor tiene la placa? (cm)<input id="slabThickness" type="number" min=".01" step="any" inputmode="decimal"></label>
 </details>
 <details class="editor-section"><summary>Validar y exportar planta</summary>
 <label class="check"><input id="coverage" type="checkbox"> Revisé la lámina completa y tracé el contorno, la estructura y todos los vanos.</label>

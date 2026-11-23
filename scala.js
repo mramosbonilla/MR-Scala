@@ -57,7 +57,7 @@ const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
 const structural = e => ["Columnas","Muros"].includes(e.layer);
 const opening = e => ["Puertas","Ventanas"].includes(e.layer);
 const rect = (x,y,w,d) => [{x,y},{x:x+w,y},{x:x+w,y:y+d},{x,y:y+d}];
-const level = (name="Planta baja") => ({id:id(),name,sources:[],elements:[],measures:[],height:null,pitch:null,coverage:false,approved:null});
+const level = (name="Planta baja") => ({id:id(),name,sources:[],elements:[],measures:[],height:null,pitch:null,slabThickness:null,coverage:false,approved:null});
 const blank = () => ({version:1,title:"Proyecto sin título",block:"Bloque A",active:0,levels:[level()]});
 function demo() {
   const p = blank(), l = p.levels[0];
@@ -543,6 +543,7 @@ function refresh() {
     $("approveElement").textContent=e.status==="confirmed" ? "Confirmado" : "Confirmar elemento";
     $("remove").textContent=e.status==="excluded" ? "Restaurar elemento" : "Excluir elemento";
   }
+  $("slabThickness").value=positive(l.slabThickness)?Number((l.slabThickness*100).toFixed(8)):"";
   $("clearHeight").value=l.height??"";$("pitch").value=l.pitch??"";$("coverage").checked=l.coverage;
   const {factor,spread}=scaleInfo(l);
   $("measures").textContent=l.measures.map((m,i)=>`Cota ${i+1} · ${m[2]} m`).concat(
@@ -596,13 +597,14 @@ function navigate(next) {
     if(next==="model")notify(preliminary?
       "Vista previa 3D · "+(scene.calibrated?"Escala del plano. ":"Escala aproximada. ")+"Ámbar: datos pendientes. Usa Desde arriba para ver la planta completa.":
       "Vista 3D de la planta validada.");
+    if(next==="model"&&!positive(l.slabThickness))$("state").textContent+=" Indica el espesor en Placa del nivel.";
     if(next==="tour"){
       setTool("start");eye=null;
       const message=scene.floors.length?
         "Toca un punto libre del plano para entrar. Arrastra para mirar alrededor.":
-        "Toca un punto libre del plano. Dibuja el Contorno del suelo para poder caminar.";
+        "Toca un punto libre. El suelo es provisional hasta que traces el contorno.";
       $("toolHint").textContent=message;
-      notify((preliminary?"Recorrido preliminar · ":"")+message);
+      notify((preliminary?"Recorrido preliminar · ":"")+message+(!positive(l.slabThickness)?" Indica el espesor en Placa del nivel.":""));
       for(const button of document.querySelectorAll('[data-move="forward"],[data-move="back"]')){
         button.disabled=!scene.floors.length;
       }
@@ -615,6 +617,7 @@ function navigate(next) {
   }
   for(const b of document.querySelectorAll("[data-view]")) b.setAttribute("aria-pressed",b.dataset.view===view);
   $("modelTop").hidden=next!=="model";
+  $("slabSettings").hidden=next!=="model"&&next!=="tour";
   $("move").hidden=next!=="tour";refresh();
 }
 document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>navigate(b.dataset.view));
@@ -849,6 +852,26 @@ $("remove").onclick=()=>{
   const state=e.status==="excluded"?"proposed":"excluded";
   if(state==="excluded" && (structural(e)||opening(e)||e.layer==="Contorno") && !confirm("¿Excluir esta pieza de la planta revisada? La fuente y la pieza original se conservan."))return;
   editElement(item=>item.status=state,true);
+};
+$("slabSettings").onclick=()=>{
+  $("levelInspector").open=true;
+  $("slabThickness").scrollIntoView({block:"center"});
+  $("slabThickness").focus({preventScroll:true});
+};
+$("slabThickness").onchange=()=>{
+  const thickness=numeric($("slabThickness"));
+  if(thickness!==null&&!positive(thickness)){
+    refresh();notify("Introduce un espesor mayor que cero, en centímetros.");return;
+  }
+  const l=current();
+  l.slabThickness=thickness===null?null:thickness/100;
+  if(view==="model"||view==="tour"){
+    const checksNow=checks(l);
+    scene=makeScene(l,!l.approved||Boolean(checksNow.plan.length||checksNow.model.length));
+  }
+  saveLocal();refresh();
+  notify(thickness===null?"Suelo guardado como superficie. Indica el espesor de la placa cuando lo tengas.":
+    "Espesor de placa guardado: "+thickness.toLocaleString("es")+" cm.");
 };
 for(const [input,key] of [["clearHeight","height"],["pitch","pitch"],["coverage","coverage"]]) {
   $(input).onchange=()=>{current()[key]=input==="coverage"?$(input).checked:numeric($(input));invalidate();navigate("review");};
@@ -1130,7 +1153,7 @@ function validProject(p) {
   const imageData=s=>s===null||(typeof s==="string"&&/^data:image\/(png|jpeg|webp|svg\+xml);base64,/.test(s));
   return p?.version===1 && typeof p.title==="string" && typeof p.block==="string" &&
     Array.isArray(p.levels) && Number.isInteger(p.active) && p.active>=0 && p.active<p.levels.length &&
-    p.levels.every(l=>typeof l.id==="string" && typeof l.name==="string" && height(l.height) && height(l.pitch) &&
+    p.levels.every(l=>typeof l.id==="string" && typeof l.name==="string" && height(l.height) && height(l.pitch) && (l.slabThickness==null||positive(l.slabThickness)) &&
       (l.approved===null||typeof l.approved==="string") && typeof l.coverage==="boolean" &&
       Array.isArray(l.sources)&&l.sources.every(s=>typeof s.name==="string" && ["Planta","Corte","Fachada"].includes(s.kind)&&imageData(s.data)) &&
       Array.isArray(l.elements)&&l.elements.every(e=>typeof e.id==="string"&&typeof e.name==="string"&&category.includes(e.layer)&&
@@ -1430,6 +1453,26 @@ function fixtureModel(form,b,base,height,prism) {
     case "cabinet": part(0,0,1,1,0,1,form==="rug"?cloth:wood);break;
   }
 }
+function provisionalFloor(elements) {
+  const footprints=elements.filter(e=>e.kind==="area"&&e.layer!=="Pendiente");
+  const walls=footprints.filter(structural);
+  const points=(walls.length?walls:footprints).flatMap(e=>e.points)
+    .sort((a,b)=>a.x-b.x||a.y-b.y);
+  const hullSide=items=>{
+    const side=[];
+    for(const p of items){
+      while(side.length>1){
+        const a=side.at(-2),b=side.at(-1);
+        if((b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x)>0)break;
+        side.pop();
+      }
+      side.push(p);
+    }
+    return side.slice(0,-1);
+  };
+  if(points.length<3)return [];
+  return [...hullSide(points),...hullSide([...points].reverse())];
+}
 function makeScene(l,preliminary=false) {
   const calibrated=scaleInfo(l).factor;
   const elements=live(l).filter(e=>!referenceOnly(e)), solids=[], faces=[], floors=[], openings=[];
@@ -1448,6 +1491,16 @@ function makeScene(l,preliminary=false) {
     }
     faces.push({p:upper,fill,pending,side:false});
     if(solid && bottom<1.55 && top>.12)solids.push(points);
+  }
+  function floorSurface(points,approximate){
+    if(points.length<3||area(points)<1e-9)return;
+    pending=approximate;
+    if(!approximate)floors.push(points);
+    if(l.slabThickness>1e-9){
+      prism(points,-l.slabThickness,0,"#aca69b",false);
+      faces.pop();
+    }
+    faces.push({p:lift(points,0),fill:"#cbc3ae",side:false,floor:true,pending:approximate,approximate});
   }
   const holesByWall=new Map();
   for(const e of elements.filter(opening)){
@@ -1509,7 +1562,7 @@ function makeScene(l,preliminary=false) {
     pending=preliminary&&(!calibrated||e.status!=="confirmed"||
       (structural(e)?!positive(l.height):!positive(e.height)||e.base===null));
     if(e.layer==="Contorno") {
-      floors.push(points);faces.push({p:lift(points,0),fill:"#cbc3ae",side:false,floor:true});continue;
+      floorSurface(points,false);continue;
     }
     if(["Infraestructura","Calles","Andenes","Jardines"].includes(e.layer)) {
       faces.push({p:lift(points,-.015),fill:ink(e.layer),side:false});continue;
@@ -1538,6 +1591,7 @@ function makeScene(l,preliminary=false) {
       if(e.layer!=="Accesorios"&&base<1.55&&base+height>.12)solids.push(points);
     }else prism(points,base,base+height,ink(e.layer),e.layer!=="Accesorios");
   }
+  if(!floors.length)floorSurface(metric(provisionalFloor(elements)),true);
   return {faces,floors,solids,openings,calibrated,factor,wallHeight,b:bounds([...faces.flatMap(f=>f.p),...openings.flatMap(o=>o.points)])};
 }
 function tourMaterial(face) {
@@ -1594,7 +1648,7 @@ function renderScene(w,h) {
   if(walk){
     for(const face of scene.faces.filter(f=>f.floor)){
       const ceiling={fill:"#eee9df",p:face.p.map(p=>({...p,z:scene.wallHeight}))};
-      for(const plane of [face,ceiling]){
+      for(const plane of face.approximate?[face]:[face,ceiling]){
         const surface=projectFace(plane,transform,screen,true);
         if(!surface)continue;
         trace(surface.xy,true);pen.fillStyle=surface.fill;pen.fill();
