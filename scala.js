@@ -600,9 +600,9 @@ function navigate(next) {
     if(next==="model"&&!positive(l.slabThickness))$("state").textContent+=" Indica el espesor en Placa del nivel.";
     if(next==="tour"){
       setTool("start");eye=null;
-      const message=scene.floors.length?
-        "Toca un punto libre del plano para entrar. Arrastra para mirar alrededor.":
-        "Toca un punto libre. El suelo es provisional hasta que traces el contorno.";
+      const message=scene.approximateFloor?
+        "Toca un punto libre para entrar. Puedes caminar dentro del suelo provisional.":
+        "Toca un punto libre del plano para entrar. Arrastra para mirar alrededor.";
       $("toolHint").textContent=message;
       notify((preliminary?"Recorrido preliminar · ":"")+message+(!positive(l.slabThickness)?" Indica el espesor en Placa del nivel.":""));
       for(const button of document.querySelectorAll('[data-move="forward"],[data-move="back"]')){
@@ -1495,7 +1495,7 @@ function makeScene(l,preliminary=false) {
   function floorSurface(points,approximate){
     if(points.length<3||area(points)<1e-9)return;
     pending=approximate;
-    if(!approximate)floors.push(points);
+    floors.push(points);
     if(l.slabThickness>1e-9){
       prism(points,-l.slabThickness,0,"#aca69b",false);
       faces.pop();
@@ -1591,8 +1591,9 @@ function makeScene(l,preliminary=false) {
       if(e.layer!=="Accesorios"&&base<1.55&&base+height>.12)solids.push(points);
     }else prism(points,base,base+height,ink(e.layer),e.layer!=="Accesorios");
   }
-  if(!floors.length)floorSurface(metric(provisionalFloor(elements)),true);
-  return {faces,floors,solids,openings,calibrated,factor,wallHeight,b:bounds([...faces.flatMap(f=>f.p),...openings.flatMap(o=>o.points)])};
+  const approximateFloor=!floors.length;
+  if(approximateFloor)floorSurface(metric(provisionalFloor(elements)),true);
+  return {faces,floors,solids,openings,calibrated,factor,wallHeight,approximateFloor,b:bounds([...faces.flatMap(f=>f.p),...openings.flatMap(o=>o.points)])};
 }
 function tourMaterial(face) {
   const [a,b,c]=face.p;
@@ -1648,7 +1649,7 @@ function renderScene(w,h) {
   if(walk){
     for(const face of scene.faces.filter(f=>f.floor)){
       const ceiling={fill:"#eee9df",p:face.p.map(p=>({...p,z:scene.wallHeight}))};
-      for(const plane of face.approximate?[face]:[face,ceiling]){
+      for(const plane of [face,ceiling]){
         const surface=projectFace(plane,transform,screen,true);
         if(!surface)continue;
         trace(surface.xy,true);pen.fillStyle=surface.fill;pen.fill();
@@ -1697,13 +1698,17 @@ function canStand(p,viewpointOnly=false) {
 
 }
 function move(action) {
-  if(view!=="tour" || !eye)return;
+  if(view!=="tour")return;
+  if(!eye){notify("Toca un punto libre del plano para iniciar el recorrido.");return;}
   if(action==="left"||action==="right"){yaw+=(action==="left"?-.2:.2);paint();return;}
-  const step=action==="forward"?.055:-.055;
+  const start=eye, step=action==="forward"?.055:-.055;
   for(let i=0;i<4;i++){
     const p={x:eye.x+Math.cos(yaw)*step,y:eye.y+Math.sin(yaw)*step};
     if(!canStand(p))break;eye=p;
   }
+  if(eye===start)notify("El paso está bloqueado. Gira o cambia el punto de vista.");
+  else if(scene.approximateFloor)notify("Recorrido sobre suelo provisional.");
+  else notify("Recorrido interior.");
   paint();
 }
 $("tourPoint").onclick=()=>navigate("tour");
