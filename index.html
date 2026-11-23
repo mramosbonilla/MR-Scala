@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.30"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.30"><script src="scala.js?v=0.30" defer></script></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#10234b"><title>MR Scala</title><link rel="manifest" href="./manifest.webmanifest?v=0.31"><link rel="apple-touch-icon" sizes="180x180" href="./scala-fachada-180.png"><link rel="icon" href="./scala-fachada-192.png"><link rel="stylesheet" href="style.css?v=0.31"><script src="scala.js?v=0.31" defer></script></head>
 <body>
-<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.30</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar</button><button id="save">Exportar copia</button></div></header>
+<header><a class="brand" href="./">MR<span>Scala</span></a><span class="version">Estudio de planos · 0.31</span><div class="files"><button id="new">Nuevo</button><button id="open">Mis proyectos</button><button id="importDirect">Importar</button><button id="save">Exportar copia</button></div></header>
 <dialog id="coverDialog" aria-label="MR Scala">
   <img src="./caratula.webp" alt="MR Scala. Del plano al espacio. Fachada frontal en dibujo técnico y maqueta." width="1122" height="1402">
   <div class="cover-actions">
@@ -30,28 +30,32 @@
 <section class="project"><label>Proyecto<input id="title" value="Estudio de muestra"></label><label>Bloque<input id="block"></label><label>Nivel<select id="levels"></select></label><button id="add">Nuevo nivel</button><button id="repeat">Repetir nivel</button></section>
 <nav aria-label="Vistas"><button data-view="review" aria-pressed="true">Revisión de capas</button><button data-view="plan">Planta 2D</button><button data-view="model">Vista 3D</button><button data-view="tour">Recorrido</button></nav>
 <div class="workspace">
-<aside>
-<h2>Fuentes</h2><button class="primary" id="source">Importar plano</button><input id="file" type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg,.dxf,.pdf,.dwg" hidden><input id="projectFile" type="file" accept=".json" hidden>
+<aside><details class="editor-section" open><summary>Fuentes del plano</summary><button class="primary" id="source">Importar plano</button><input id="file" type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg,.dxf,.pdf,.dwg" hidden><input id="projectFile" type="file" accept=".json" hidden>
 <select id="sources" aria-label="Lámina visible"></select><button id="attach">Otra lámina</button>
 <label class="check"><input id="underlay" type="checkbox" checked> Mostrar referencia</label>
 
-</aside>
+</details></aside>
 <section class="drawing">
 <div class="toolbar"><span id="toolHint">Elige una capa y selecciona un elemento.</span><div><button id="minus" aria-label="Alejar">−</button><button id="plus" aria-label="Acercar">+</button><button id="fit">Encuadrar</button><button id="modelTop" hidden aria-pressed="false">Desde arriba</button><button id="pan">Mover vista</button></div></div>
 <div id="reviewReference" class="reviewReference" hidden><label for="referenceOpacity">Visibilidad del plano de fondo <output id="referenceValue" for="referenceOpacity">72 %</output></label><input id="referenceOpacity" type="range" min="30" max="100" value="72"></div>
 <div id="layerReview" class="layerReview" hidden>
+  <details class="editor-section" id="wallProposals"><summary>Detección automática de muros</summary>
   <div id="wallProposalPanel" class="wall-proposal" hidden>
     <button type="button" id="proposeWalls" class="primary">Proponer muros</button>
     <span id="proposalScale" role="status"></span>
     <p id="proposalResult" role="status" hidden></p>
   </div>
+  </details>
   <div class="layerReviewBar"><label>Capa en revisión <select id="reviewLayer"></select></label><span id="reviewLayerCount" role="status"></span><button type="button" id="confirmReviewLayer" class="primary" hidden>Confirmar capa</button></div>
+  <div class="layerReviewBar"><button type="button" id="selectInLayer" aria-pressed="true">Toque</button><button type="button" id="wallTrace" class="primary" hidden>Trazar tramo de muro</button><button type="button" id="wallSelect" hidden>Seleccionar muro</button><button type="button" id="wallRemove" hidden>Eliminar muro</button><button type="button" id="wallUndo" hidden>Deshacer eliminación</button><button type="button" id="wallRectangle" hidden>Rectángulo</button><button type="button" id="doorTrace" hidden>Trazar puerta abatible</button><button type="button" id="doorFlip" hidden>Invertir giro</button><button type="button" id="windowTrace" hidden>Trazar ventana</button><button type="button" id="windowAccept" class="primary" hidden>Añadir ventana</button><button type="button" id="doorAccept" class="primary" hidden>Añadir puerta</button><button type="button" id="doorDepth" hidden>Definir profundidad del vano</button><button type="button" id="doorToggle" hidden></button><button type="button" id="traceInLayer">Trazar elemento</button></div>
+  <details class="editor-section"><summary>Más herramientas y piezas de la capa</summary>
+  <div class="layerReviewBar"><button type="button" data-select-tool="brush">Pincel</button><button type="button" data-select-tool="lasso">Lazo</button><button type="button" data-select-tool="endpoints">Dos puntos</button></div>
+  <div class="layerReviewBar"><label><input type="checkbox" id="orthoDraft" checked> Ortogonal</label><label><input type="checkbox" id="cornerDraft" checked> Ajustar a esquinas</label></div>
   <div class="layer-pieces">
     <span id="layerLegend" hidden><span class="layer-swatch" aria-hidden="true"></span> Azul: piezas de esta capa</span>
     <label id="layerPiecesLabel">Piezas de la capa <select id="layerPieces"></select></label>
   </div>
-  <div class="layerReviewBar"><button type="button" id="selectInLayer" aria-pressed="true">Toque</button><button type="button" data-select-tool="brush">Pincel</button><button type="button" data-select-tool="lasso">Lazo</button><button type="button" data-select-tool="endpoints">Dos puntos</button><button type="button" id="wallTrace" class="primary" hidden>Trazar tramo de muro</button><button type="button" id="wallSelect" hidden>Seleccionar muro</button><button type="button" id="wallRemove" hidden>Eliminar muro</button><button type="button" id="wallUndo" hidden>Deshacer eliminación</button><button type="button" id="wallRectangle" hidden>Rectángulo</button><button type="button" id="doorTrace" hidden>Trazar puerta abatible</button><button type="button" id="doorFlip" hidden>Invertir giro</button><button type="button" id="windowTrace" hidden>Trazar ventana</button><button type="button" id="windowAccept" class="primary" hidden>Añadir ventana</button><button type="button" id="doorAccept" class="primary" hidden>Añadir puerta</button><button type="button" id="doorDepth" hidden>Definir profundidad del vano</button><button type="button" id="doorToggle" hidden></button><button type="button" id="traceInLayer">Trazar elemento</button></div>
-  <div class="layerReviewBar"><label><input type="checkbox" id="orthoDraft" checked> Ortogonal</label><label><input type="checkbox" id="cornerDraft" checked> Ajustar a esquinas</label></div>
+  </details>
   <div id="fixtureBar" class="layerReviewBar" hidden>
     <label>Pieza <select id="fixtureType"></select></label>
     <button type="button" id="fixtureTrace">Marcar en el plano</button>
@@ -73,7 +77,7 @@
   </div>
   <div id="reviewSelection" hidden>
     <label for="reviewCandidate">Elemento seleccionado</label><select id="reviewCandidate"></select>
-    <button type="button" id="addToLayer"></button>
+    <button type="button" id="openingEdit" hidden>Alturas y hojas del vano</button><button type="button" id="addToLayer"></button>
     <button type="button" id="excludeLayerPiece">Excluir pieza</button>
     <button type="button" id="confirmLayerPiece">Confirmar en esta capa</button>
     <button type="button" id="removeFromLayer">Pasar a Pendiente</button>
@@ -84,14 +88,30 @@
 <div class="stageFooter"><span id="state" role="status"></span><button id="traceMissing" type="button" hidden></button><div id="move" hidden><button data-move="left">Girar izq.</button><button data-move="back">Retroceder</button><button data-move="forward">Avanzar</button><button data-move="right">Girar der.</button></div></div>
 </section>
 <aside class="inspector">
-<h2>Elemento</h2><button id="draw">Trazar elemento</button><button id="line">Trazar línea 2D</button><label>Biblioteca<select id="catalog"></select></label><button id="place">Colocar símbolo</button>
-<div id="selection" hidden>
-<label>Nombre<input id="elementName"></label><label>Capa<select id="elementLayer"></select></label><label>Altura del elemento (m)<input id="height" type="number" min="0" step=".01"></label><label>Altura de base (m)<input id="base" type="number" min="0" step=".01"></label><label id="hostLabel">Muro del vano<select id="host"></select></label><button id="approveElement">Confirmar elemento</button><button id="remove">Excluir elemento</button>
+<details class="editor-section" id="openingInspector" hidden>
+<summary id="openingTitle">Puerta o ventana seleccionada</summary>
+<div class="editor-fields">
+<label class="check"><input id="floorToCeiling" type="checkbox"> Piso a techo</label>
+<label id="openingBaseLabel">Altura del piso al inicio de la ventana (m)<input id="openingBase" type="number" min="0" step=".01" inputmode="decimal"></label>
+<label><span id="openingHeightLabel">Altura del vano (m)</span><input id="openingHeight" type="number" min=".01" step=".01" inputmode="decimal"></label>
+<label id="windowLeavesLabel">Hojas de la ventana<select id="windowLeaves"></select></label>
+<label id="hostLabel">Muro del vano<select id="host"></select></label>
+<p id="openingNote" role="status"></p>
 </div>
-<h2>Escala y alturas</h2><button id="measure">Medir referencia</button><button id="clearMeasures">Borrar cotas</button><div id="measures"></div>
+</details>
+<details class="editor-section" id="elementInspector"><summary>Editar pieza o colocar símbolo</summary>
+<button id="draw">Trazar elemento</button><button id="line">Trazar línea 2D</button><label>Biblioteca<select id="catalog"></select></label><button id="place">Colocar símbolo</button>
+<div id="selection" hidden>
+<label>Nombre<input id="elementName"></label><label>Capa<select id="elementLayer"></select></label><label id="heightLabel">Altura del elemento (m)<input id="height" type="number" min="0" step=".01"></label><label id="baseLabel">Altura de base (m)<input id="base" type="number" min="0" step=".01"></label><button id="approveElement">Confirmar elemento</button><button id="remove">Excluir elemento</button>
+</div>
+</details>
+<details class="editor-section" id="levelInspector"><summary>Escala y alturas del nivel</summary>
+<button id="measure">Medir referencia</button><button id="clearMeasures">Borrar cotas</button><div id="measures"></div>
 <label>Altura libre (m)<input id="clearHeight" type="number" min="0" step=".01"></label><label>Distancia piso a piso (m)<input id="pitch" type="number" min="0" step=".01"></label>
+</details>
+<details class="editor-section"><summary>Validar y exportar planta</summary>
 <label class="check"><input id="coverage" type="checkbox"> Revisé la lámina completa y tracé el contorno, la estructura y todos los vanos.</label>
-<button id="validate" class="primary">Validar planta</button><button id="export">Exportar planta SVG</button><div id="issues"></div>
+<button id="validate" class="primary">Validar planta</button><button id="export">Exportar planta SVG</button><div id="issues"></div></details>
 </aside>
 </div>
 </main></body></html>
