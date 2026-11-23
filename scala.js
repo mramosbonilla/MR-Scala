@@ -1123,14 +1123,19 @@ const planTouches = new Map();
 let planPinch = null;
 let fitScale = 1;
 const isPlanView = () => view!=="model"&&view!=="tour";
-function fit() {
+function fit(previous=null) {
   const src=current().sources[sourceIndex];
   const points=src?.kind!=="Planta" && reference ? [] : current().elements.flatMap(e=>e.points);
   if(reference)points.push(...rect(0,0,reference.naturalWidth,reference.naturalHeight));
   if(!points.length)points.push(...rect(0,0,800,540));
   const b=bounds(points), {w,h}=size(), s=Math.min((w-40)/Math.max(1,b.right-b.x),(h-40)/Math.max(1,b.bottom-b.y));
+  const oldScale=fitScale;
   fitScale=Math.max(.000001,s);
-  camera={scale:fitScale,x:w/2-(b.x+b.right)*fitScale/2,y:h/2-(b.y+b.bottom)*fitScale/2};
+  if(previous&&camera.scale>oldScale*1.01){
+    const center={x:(previous.w/2-camera.x)/camera.scale,y:(previous.h/2-camera.y)/camera.scale};
+    const scale=camera.scale/oldScale*fitScale;
+    camera={scale,x:w/2-center.x*scale,y:h/2-center.y*scale};
+  }else camera={scale:fitScale,x:w/2-(b.x+b.right)*fitScale/2,y:h/2-(b.y+b.bottom)*fitScale/2};
   paint();
 }
 function zoom(by,x=size().w/2,y=size().h/2) {
@@ -1878,7 +1883,14 @@ canvas.addEventListener("wheel",e=>{
   if(view==="model"||view==="tour")return;e.preventDefault();
   const {x,y}=coords(e);zoom(e.deltaY<0?1.14:1/1.14,x,y);
 },{passive:false});
-new ResizeObserver(()=>{if(!reference&&!drag&&!planTouches.size)fit();else paint();}).observe(canvas);
+let previousCanvasSize=size();
+new ResizeObserver(()=>{
+  const next=size();
+  if(isPlanView()&&!drag&&!planTouches.size&&
+    (next.w!==previousCanvasSize.w||next.h!==previousCanvasSize.h))fit(previousCanvasSize);
+  else paint();
+  previousCanvasSize=next;
+}).observe(canvas);
 fit();refresh();navigate("model");notify("Modelo de muestra. Arrastra para girarlo o abre Recorrido.");
 $("coverDialog").showModal();
 
