@@ -590,16 +590,23 @@ function navigate(next) {
   if(next==="model" || next==="tour") {
     const errors=checks(l);
     const preliminary=!l.approved||Boolean(errors.plan.length||errors.model.length);
-    if(next==="tour"&&preliminary) {
-      notify("Completa la validación y las alturas antes de abrir el modelo.");return;
-    }
     const nextScene=makeScene(l,preliminary);
     if(!nextScene.faces.length){notify("Traza un muro, contorno o pieza para abrir la vista 3D.");return;}
     scene=nextScene;
     if(next==="model")notify(preliminary?
       "Vista previa 3D · "+(scene.calibrated?"Escala del plano. ":"Escala aproximada. ")+"Ámbar: datos pendientes. Usa Desde arriba para ver la planta completa.":
       "Vista 3D de la planta validada.");
-    if(next==="tour") {setTool("start");eye=null;}
+    if(next==="tour"){
+      setTool("start");eye=null;
+      const message=scene.floors.length?
+        "Toca un punto libre del plano para entrar. Arrastra para mirar alrededor.":
+        "Toca un punto libre del plano. Dibuja el Contorno del suelo para poder caminar.";
+      $("toolHint").textContent=message;
+      notify((preliminary?"Recorrido preliminar · ":"")+message);
+      for(const button of document.querySelectorAll('[data-move="forward"],[data-move="back"]')){
+        button.disabled=!scene.floors.length;
+      }
+    }
   } else setTool("select");
   view=next;
   if(next==="plan" || next==="tour") {
@@ -1329,8 +1336,8 @@ function fixtureModel(form,b,base,height,prism) {
   function part(x,y,w,d,z,h,fill,round=false){
     const xy=(u,v)=>form==="bed"&&width>depth?
       {x:b.x+v*width,y:b.y+u*depth}:{x:b.x+u*width,y:b.y+v*depth};
-    const points=round?Array.from({length:12},(_,i)=>{
-      const a=i*Math.PI/6;return xy(x+w*(1+Math.cos(a))/2,y+d*(1+Math.sin(a))/2);
+    const points=round?Array.from({length:20},(_,i)=>{
+      const a=i*Math.PI/10;return xy(x+w*(1+Math.cos(a))/2,y+d*(1+Math.sin(a))/2);
     }):[xy(x,y),xy(x+w,y),xy(x+w,y+d),xy(x,y+d)];
     prism(points,base+z*height,base+(z+h)*height,fill,false);
   }
@@ -1342,17 +1349,31 @@ function fixtureModel(form,b,base,height,prism) {
     part(0,.12,.11,.76,z,h,fill);part(.89,.12,.11,.76,z,h,fill);
   };
   switch(form){
-    case "tub": part(.05,.05,.9,.9,0,.58,white);rim(.55,.45,white);break;
-    case "shower": part(0,0,1,1,0,.055,white);part(0,0,.035,1,.055,.945,glass);break;
+    case "tub":
+      part(.05,.05,.9,.9,0,.58,white);rim(.55,.45,white);
+      part(.12,.12,.76,.76,.579,.018,"#d1dde0",true);
+      part(.44,.18,.12,.12,.597,.012,dark,true);
+      part(.4,.055,.2,.045,.96,.04,"#b9c7cc",true);break;
+    case "shower":
+      part(0,0,1,1,0,.055,white);
+      part(.45,.45,.1,.1,.054,.013,"#90a0a7",true);
+      part(0,0,.035,1,.055,.945,"#b6d9e2");
+      part(0,0,.05,.04,.05,.95,dark);part(0,.96,.05,.04,.05,.95,dark);
+      part(.05,.46,.16,.08,.87,.022,"#b9c7cc",true);break;
     case "toilet":
       part(.26,.31,.48,.54,0,.44,white,true);
       part(.13,.29,.74,.69,.39,.31,white,true);
-      part(.13,.02,.74,.29,.38,.62,white);break;
+      part(.19,.34,.62,.55,.698,.014,"#f9faf6",true);
+      part(.29,.42,.42,.38,.712,.009,"#b1c3ca",true);
+      part(.13,.02,.74,.29,.38,.62,white);
+      part(.43,.10,.14,.10,.993,.007,"#94a5ab",true);break;
     case "basin":
       part(.37,.36,.26,.28,0,.81,white,true);
       part(.04,.03,.92,.94,.8,.15,white,true);
-      part(.21,.18,.58,.62,.95,.012,glass,true);
-      part(.46,.08,.08,.09,.95,.05,dark,true);break;
+      part(.21,.18,.58,.62,.949,.012,"#b6c9cd",true);
+      part(.32,.3,.36,.37,.961,.011,"#d6e0e1",true);
+      part(.45,.44,.1,.1,.972,.006,dark,true);
+      part(.46,.08,.08,.09,.95,.05,"#aabdc6",true);break;
     case "sinkCounter":
     case "counter":
       part(.04,.05,.92,.9,0,.91,wood);part(0,0,1,1,.91,.075,white);
@@ -1361,7 +1382,10 @@ function fixtureModel(form,b,base,height,prism) {
     case "bed":
       part(.02,.04,.96,.96,0,.45,wood);part(.04,.09,.92,.88,.45,.2,white);
       part(.04,.32,.92,.65,.65,.05,cloth);part(0,0,1,.07,0,1,wood);
-      part(.11,.1,.31,.2,.65,.1,white,true);part(.58,.1,.31,.2,.65,.1,white,true);break;
+      part(.07,.064,.86,.025,.58,.36,"#c8b3a0");
+      part(.03,.76,.94,.13,.699,.025,"#506e83");
+      part(.11,.11,.3,.19,.65,.10,"#faf8ef",true);
+      part(.59,.11,.3,.19,.65,.10,"#faf8ef",true);break;
     case "sofa":
     case "sectional":
       part(0,.06,1,form==="sectional"?.65:.94,0,.53,cloth);
@@ -1485,7 +1509,7 @@ function makeScene(l,preliminary=false) {
     pending=preliminary&&(!calibrated||e.status!=="confirmed"||
       (structural(e)?!positive(l.height):!positive(e.height)||e.base===null));
     if(e.layer==="Contorno") {
-      floors.push(points);faces.push({p:lift(points,0),fill:"#cbc3ae",side:false});continue;
+      floors.push(points);faces.push({p:lift(points,0),fill:"#cbc3ae",side:false,floor:true});continue;
     }
     if(["Infraestructura","Calles","Andenes","Jardines"].includes(e.layer)) {
       faces.push({p:lift(points,-.015),fill:ink(e.layer),side:false});continue;
@@ -1514,7 +1538,18 @@ function makeScene(l,preliminary=false) {
       if(e.layer!=="Accesorios"&&base<1.55&&base+height>.12)solids.push(points);
     }else prism(points,base,base+height,ink(e.layer),e.layer!=="Accesorios");
   }
-  return {faces,floors,solids,openings,calibrated,b:bounds([...faces.flatMap(f=>f.p),...openings.flatMap(o=>o.points)])};
+  return {faces,floors,solids,openings,calibrated,factor,wallHeight,b:bounds([...faces.flatMap(f=>f.p),...openings.flatMap(o=>o.points)])};
+}
+function tourMaterial(face) {
+  const [a,b,c]=face.p;
+  const ux=b.x-a.x,uy=b.y-a.y,uz=b.z-a.z;
+  const vx=c.x-a.x,vy=c.y-a.y,vz=c.z-a.z;
+  const normal={x:uy*vz-uz*vy,y:uz*vx-ux*vz,z:ux*vy-uy*vx};
+  const length=Math.hypot(normal.x,normal.y,normal.z)||1;
+  const light=face.side?.73+.23*Math.abs((normal.x*.76-normal.y*.65)/length):1.04;
+  const material=face.fill==="#9fbacb"?"#ded9cf":face.fill==="#cbc3ae"?"#b5a089":face.fill;
+  const tint=[1.02,1,.97];
+  return "rgb("+tint.map((t,i)=>Math.min(255,Math.round(parseInt(material.slice(i*2+1,i*2+3),16)*light*t))).join(",")+")";
 }
 function projectFace(face,transform,screen,perspective) {
   let points=face.p.map(transform);
@@ -1531,17 +1566,17 @@ function projectFace(face,transform,screen,perspective) {
     points=clipped;
   }
   if(points.length<3)return null;
-  return {xy:points.map(screen),depth:points.reduce((sum,p)=>sum+p.d,0)/points.length,fill:face.fill,pending:face.pending,side:face.side};
+  return {xy:points.map(screen),depth:points.reduce((sum,p)=>sum+p.d,0)/points.length,fill:perspective?tourMaterial(face):face.fill,pending:face.pending,side:face.side};
 }
 function renderScene(w,h) {
   const walk=view==="tour";
   if(walk&&!eye){planPaint();return;}
   if(!scene)return;
   const b=scene.b, cx=(b.x+b.right)/2, cy=(b.y+b.bottom)/2;
-  const focal=Math.min(w,h)*.76, cs=Math.cos(walk?yaw:orbit),sn=Math.sin(walk?yaw:orbit);
+  const focal=walk?Math.max(Math.min(w,h)*.76,w*.52):Math.min(w,h)*.76, cs=Math.cos(walk?yaw:orbit),sn=Math.sin(walk?yaw:orbit);
   const transform=walk ? p=>{
     const x=p.x-eye.x,y=p.y-eye.y;
-    return {x:-x*sn+y*cs,y:Math.min(1.55,current().height*.82)-p.z,d:x*cs+y*sn};
+    return {x:-x*sn+y*cs,y:Math.min(1.55,scene.wallHeight*.82)-p.z,d:x*cs+y*sn};
   } : modelTop ? p=>({x:p.x-cx,y:p.y-cy,d:-p.z}) : p=>{
     const x=p.x-cx,y=p.y-cy,depth=x*sn+y*cs;
     return {x:x*cs-y*sn,y:depth*.55-p.z*.9,d:-depth-p.z*.55};
@@ -1556,9 +1591,20 @@ function renderScene(w,h) {
     p=>({x:w/2+(p.x-(frame.x+frame.right)/2)*ratio,y:h/2+(p.y-(frame.y+frame.bottom)/2)*ratio});
   const gradient=pen.createLinearGradient(0,0,0,h);gradient.addColorStop(0,"#d8eaf4");gradient.addColorStop(1,"#f8fafc");
   pen.fillStyle=gradient;pen.fillRect(0,0,w,h);
-  const faces=scene.faces.map(f=>projectFace(f,transform,screen,walk)).filter(Boolean).sort((a,b)=>b.depth-a.depth);
+  if(walk){
+    for(const face of scene.faces.filter(f=>f.floor)){
+      const ceiling={fill:"#eee9df",p:face.p.map(p=>({...p,z:scene.wallHeight}))};
+      for(const plane of [face,ceiling]){
+        const surface=projectFace(plane,transform,screen,true);
+        if(!surface)continue;
+        trace(surface.xy,true);pen.fillStyle=surface.fill;pen.fill();
+      }
+    }
+  }
+  const faces=scene.faces.filter(f=>!walk||!f.floor).map(f=>projectFace(f,transform,screen,walk)).filter(Boolean).sort((a,b)=>b.depth-a.depth);
   for(const face of faces) {
     trace(face.xy,true);pen.fillStyle=face.fill;pen.fill();
+    if(walk)continue;
     if(face.side){pen.fillStyle="#13263818";pen.fill();}
     pen.lineWidth=.75;pen.strokeStyle=face.pending?"#a56730":"#31475742";pen.stroke();
   }
@@ -1586,10 +1632,15 @@ function nearLine(p,a,b) {
   const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/length));
   return distance(p,{x:a.x+t*dx,y:a.y+t*dy});
 }
-function canStand(p) {
+function canStand(p,viewpointOnly=false) {
   if(!scene)return false;
   const probes=[p,...Array.from({length:8},(_,i)=>({x:p.x+.14*Math.cos(i*Math.PI/4),y:p.y+.14*Math.sin(i*Math.PI/4)}))];
-  return probes.every(q=>scene.floors.some(f=>inside(q,f))&&!scene.solids.some(s=>inside(q,s)));
+  const {b,floors,solids}=scene;
+  return probes.every(q=>
+    (floors.length?floors.some(f=>inside(q,f)):
+      viewpointOnly&&q.x>=b.x&&q.x<=b.right&&q.y>=b.y&&q.y<=b.bottom)&&
+    !solids.some(s=>inside(q,s)));
+
 }
 function move(action) {
   if(view!=="tour" || !eye)return;
@@ -1601,6 +1652,7 @@ function move(action) {
   }
   paint();
 }
+$("tourPoint").onclick=()=>navigate("tour");
 document.querySelectorAll("[data-move]").forEach(b=>b.onclick=()=>move(b.dataset.move));
 canvas.addEventListener("keydown",event=>{
   const command={ArrowUp:"forward",ArrowDown:"back",ArrowLeft:"left",ArrowRight:"right"}[event.key];
@@ -1835,9 +1887,14 @@ canvas.addEventListener("pointerup",event=>{
   if(moved&&!precision)return;
   if(view==="tour") {
     if(!eye){
-      const s=scaleInfo(current()).factor, candidate={x:p.x*s,y:p.y*s};
-      if(!canStand(candidate)){notify("Elige un punto libre dentro del suelo.");return;}
-      eye=candidate;yaw=0;$("toolHint").textContent="Usa las flechas o los botones. Arrastra para girar.";paint();
+      const s=scene.factor, candidate={x:p.x*s,y:p.y*s};
+      if(!canStand(candidate,true)){notify("Elige un punto libre dentro del plano.");return;}
+      eye=candidate;
+      yaw=Math.atan2((scene.b.y+scene.b.bottom)/2-eye.y,(scene.b.x+scene.b.right)/2-eye.x);
+      $("toolHint").textContent=scene.floors.length?
+        "Arrastra para mirar. Usa Avanzar y Retroceder para caminar.":
+        "Arrastra para mirar o cambia de punto de vista.";
+      paint();
     }
     return;
   }
