@@ -218,7 +218,7 @@ function holeRange(e,wall) {
   return [Math.max(0,b.x),Math.min(length,b.right)];
 }
 function referenceOnly(e) {
-  return e.reviewSymbol&&(e.layer==="Infraestructura"||(e.layer==="Ventanas"&&
+  return e.reviewSymbol&&(e.layer==="Infraestructura"||/conjunto.*(?:tapete|alfombra)/i.test(e.name)||(e.layer==="Ventanas"&&
     /^(Montante|Marco)\b/i.test(e.name)));
 }
 function detectedModel(e) {
@@ -231,7 +231,7 @@ function detectedModel(e) {
   });
   if(match)return types[match];
   if(e.layer==="Mesas"&&name.startsWith("mesa del comedor"))return types["Mesa de comedor"];
-  if(e.layer==="Mesas"&&name.startsWith("mesa centro"))return types["Mesa auxiliar"];
+  if(e.layer==="Mesas"&&name.startsWith("mesa centro"))return types["Mesa redonda"];
   if(e.layer==="Sillas"&&name.startsWith("sillon"))return fixtures.Sofás.Sillón;
   if(e.layer==="Electrodomésticos"&&/^lav(?: |$)/.test(name))return types.Lavadora;
   if(e.layer==="Cocina"&&name.startsWith("lavadero"))return fixtures.Baños.Lavamanos;
@@ -1353,30 +1353,72 @@ function planPaint() {
     pen.stroke();
   }
 }
-function fixtureModel(form,b,base,height,prism) {
-  const width=b.right-b.x, depth=b.bottom-b.y;
-  const white="#e8e9e5", wood="#a37858", cloth="#7896a9", dark="#303e47", glass="#90bacb";
-  function part(x,y,w,d,z,h,fill,round=false){
-    const xy=(u,v)=>form==="bed"&&width>depth?
-      {x:b.x+v*width,y:b.y+u*depth}:{x:b.x+u*width,y:b.y+v*depth};
-    const points=round?Array.from({length:20},(_,i)=>{
-      const a=i*Math.PI/10;return xy(x+w*(1+Math.cos(a))/2,y+d*(1+Math.sin(a))/2);
-    }):[xy(x,y),xy(x+w,y),xy(x+w,y+d),xy(x,y+d)];
-    prism(points,base+z*height,base+(z+h)*height,fill,false);
+function orientedFixture(points,form) {
+  const hull=convexHull(points);
+  if(hull.length<3)return null;
+  let best;
+  for(const [a,b] of edges(hull,true)){
+    const length=distance(a,b);
+    if(!positive(length))continue;
+    const u={x:(b.x-a.x)/length,y:(b.y-a.y)/length};
+    if(u.x<0||(u.x===0&&u.y<0)){u.x=-u.x;u.y=-u.y;}
+    const v={x:-u.y,y:u.x};
+    const box=bounds(hull.map(p=>({x:p.x*u.x+p.y*u.y,y:p.x*v.x+p.y*v.y})));
+    const width=box.right-box.x, depth=box.bottom-box.y, size=width*depth;
+    if(best&&(size>best.size+1e-8||(Math.abs(size-best.size)<=1e-8&&Math.abs(u.x)<=Math.abs(best.u.x))))continue;
+    best={box,u,v,width,depth,size};
   }
+  if(!best||best.size<=1e-9)return null;
+  const {box,u,v,width,depth}=best;
+  const deep=["bed","toilet","tub"].includes(form);
+  const wide=["sofa","sectional"].includes(form);
+  const rotate=(deep&&width>depth)||(wide&&width<depth);
+  return (x,y)=>{
+    if(rotate)[x,y]=[y,1-x];
+    const a=box.x+x*width,b=box.y+y*depth;
+    return {x:u.x*a+v.x*b,y:u.y*a+v.y*b};
+  };
+}
+function fixtureModel(form,points,base,height,prism,face) {
+  const xy=orientedFixture(points,form);
+  if(!xy)return;
+  const white="#e8e9e5", wood="#a37858", cloth="#7896a9", dark="#303e47", glass="#90bacb";
+  const chrome="#b9c9cf", porcelain="#f3f4f0";
+  function outline(x,y,w,d,curve){
+    if(!curve)return [xy(x,y),xy(x+w,y),xy(x+w,y+d),xy(x,y+d)];
+    return Array.from({length:24},(_,i)=>{
+      const a=i*Math.PI/12,c=Math.cos(a),s=Math.sin(a);
+      const shape=t=>Math.sign(t)*Math.abs(t)**curve;
+      return xy(x+w*(1+shape(c))/2,y+d*(1+shape(s))/2);
+    });
+  }
+  function part(x,y,w,d,z,h,fill,round=false){
+    prism(outline(x,y,w,d,round?1:0),base+z*height,base+(z+h)*height,fill,false);
+  }
+  function profile(rings,fill,curve,cap=true){
+    const layers=rings.map(([x,y,w,d,z])=>outline(x,y,w,d,curve).map(p=>({...p,z:base+z*height})));
+    for(let i=1;i<layers.length;i++){
+      const lower=layers[i-1],upper=layers[i];
+      for(let j=0;j<lower.length;j++){
+        const k=(j+1)%lower.length;
+        face([lower[j],lower[k],upper[k],upper[j]],fill,true);
+      }
+    }
+    if(cap)face(layers.at(-1),fill,false);
+  }
+  const cushion=(x,y,w,d,z,h,fill)=>profile([
+    [x+.04*w,y+.04*d,.92*w,.92*d,z],[x,y,w,d,z+.24*h],
+    [x,y,w,d,z+.76*h],[x+.045*w,y+.055*d,.91*w,.89*d,z+h]
+  ],fill,.34);
   const legs=(z,fill)=>{
     for(const x of [.06,.82])for(const y of [.06,.82])part(x,y,.12,.12,0,z,fill);
   };
-  const rim=(z,h,fill)=>{
-    part(0,0,1,.12,z,h,fill);part(0,.88,1,.12,z,h,fill);
-    part(0,.12,.11,.76,z,h,fill);part(.89,.12,.11,.76,z,h,fill);
-  };
   switch(form){
     case "tub":
-      part(.05,.05,.9,.9,0,.58,white);rim(.55,.45,white);
-      part(.12,.12,.76,.76,.579,.018,"#d1dde0",true);
-      part(.44,.18,.12,.12,.597,.012,dark,true);
-      part(.4,.055,.2,.045,.96,.04,"#b9c7cc",true);break;
+      profile([[.10,.1,.8,.8,0],[.025,.025,.95,.95,.9],[0,0,1,1,1],
+        [.075,.08,.85,.84,1],[.14,.15,.72,.7,.26]],porcelain,.4);
+      part(.46,.21,.08,.08,.261,.016,chrome,true);
+      part(.46,.035,.08,.06,.96,.04,chrome,true);break;
     case "shower":
       part(0,0,1,1,0,.055,white);
       part(.45,.45,.1,.1,.054,.013,"#90a0a7",true);
@@ -1384,42 +1426,55 @@ function fixtureModel(form,b,base,height,prism) {
       part(0,0,.05,.04,.05,.95,dark);part(0,.96,.05,.04,.05,.95,dark);
       part(.05,.46,.16,.08,.87,.022,"#b9c7cc",true);break;
     case "toilet":
-      part(.26,.31,.48,.54,0,.44,white,true);
-      part(.13,.29,.74,.69,.39,.31,white,true);
-      part(.19,.34,.62,.55,.698,.014,"#f9faf6",true);
-      part(.29,.42,.42,.38,.712,.009,"#b1c3ca",true);
-      part(.13,.02,.74,.29,.38,.62,white);
-      part(.43,.10,.14,.10,.993,.007,"#94a5ab",true);break;
+      profile([[.29,.31,.42,.49,0],[.27,.31,.46,.51,.34],[.14,.27,.72,.72,.57],
+        [.11,.25,.78,.75,.69],[.18,.31,.64,.62,.73],[.28,.42,.44,.4,.45]],porcelain,1);
+      part(.37,.49,.26,.26,.451,.01,"#a7c0c7",true);
+      cushion(.10,.015,.8,.30,.38,.62,porcelain);
+      part(.43,.10,.14,.10,.995,.005,chrome,true);break;
     case "basin":
-      part(.37,.36,.26,.28,0,.81,white,true);
-      part(.04,.03,.92,.94,.8,.15,white,true);
-      part(.21,.18,.58,.62,.949,.012,"#b6c9cd",true);
-      part(.32,.3,.36,.37,.961,.011,"#d6e0e1",true);
-      part(.45,.44,.1,.1,.972,.006,dark,true);
-      part(.46,.08,.08,.09,.95,.05,"#aabdc6",true);break;
+      profile([[.37,.39,.26,.26,0],[.41,.43,.18,.18,.64],[.29,.26,.42,.52,.80]],white,1);
+      profile([[.23,.24,.54,.52,.77],[.025,.025,.95,.95,.95],[.045,.047,.91,.906,.98],
+        [.14,.16,.72,.71,.97],[.30,.33,.4,.38,.82]],porcelain,.65);
+      part(.45,.45,.10,.1,.822,.012,chrome,true);
+      part(.45,.065,.10,.12,.92,.08,chrome,true);
+      part(.47,.12,.06,.16,.968,.026,chrome,true);break;
     case "sinkCounter":
     case "counter":
       part(.04,.05,.92,.9,0,.91,wood);part(0,0,1,1,.91,.075,white);
       if(form==="sinkCounter")part(.3,.24,.4,.52,.984,.016,glass,true);
       break;
     case "bed":
-      part(.02,.04,.96,.96,0,.45,wood);part(.04,.09,.92,.88,.45,.2,white);
-      part(.04,.32,.92,.65,.65,.05,cloth);part(0,0,1,.07,0,1,wood);
-      part(.07,.064,.86,.025,.58,.36,"#c8b3a0");
-      part(.03,.76,.94,.13,.699,.025,"#506e83");
-      part(.11,.11,.3,.19,.65,.10,"#faf8ef",true);
-      part(.59,.11,.3,.19,.65,.10,"#faf8ef",true);break;
+      legs(.16,dark);cushion(.02,.04,.96,.96,.14,.31,wood);
+      cushion(.04,.085,.92,.90,.44,.21,porcelain);
+      cushion(.025,.32,.95,.67,.64,.075,cloth);
+      cushion(0,0,1,.085,0,1,wood);
+      for(let i=0;i<5;i++)cushion(.07+i*.174,.076,.162,.027,.55,.39,"#c8b3a0");
+      cushion(.03,.76,.94,.13,.711,.031,"#506e83");
+      cushion(.11,.11,.3,.19,.64,.12,"#faf8ef");
+      cushion(.59,.11,.3,.19,.64,.12,"#faf8ef");break;
     case "sofa":
     case "sectional":
-      part(0,.06,1,form==="sectional"?.65:.94,0,.53,cloth);
-      if(form==="sectional")part(0,.65,.34,.35,0,.53,cloth);
-      part(0,0,1,.19,.35,.65,cloth);part(0,.19,.12,.62,.45,.26,cloth);part(.88,.19,.12,.62,.45,.26,cloth);break;
+      const sectional=form==="sectional";
+      legs(.13,wood);cushion(0,.04,1,sectional?.64:.96,.10,.39,cloth);
+      if(sectional)cushion(0,.57,.36,.43,.10,.40,cloth);
+      for(let i=0;i<3;i++){
+        const x=.13+i*.25;
+        cushion(x,.14,.24,.22,.43,.57,"#8da8b7");
+        cushion(x,.33,.24,sectional?.30:.59,.46,.15,cloth);
+      }
+      cushion(0,.17,.12,.77,.42,.34,cloth);
+      cushion(.88,.17,.12,sectional?.48:.77,.42,.34,cloth);break;
     case "chair":
-      legs(.53,wood);part(0,0,1,1,.5,.13,cloth);part(0,0,1,.15,.62,.38,wood);break;
+      legs(.53,wood);cushion(.04,.055,.92,.89,.48,.15,cloth);
+      part(.13,.07,.08,.10,.49,.43,wood);part(.79,.07,.08,.10,.49,.43,wood);
+      cushion(.08,.04,.84,.16,.72,.28,cloth);break;
     case "table":
-      legs(.89,wood);part(0,0,1,1,.89,.11,wood);break;
+      legs(.90,wood);part(.09,.12,.82,.76,.76,.15,wood);
+      cushion(0,0,1,1,.87,.13,"#b48961");break;
     case "roundTable":
-      part(.43,.43,.14,.14,0,.9,wood,true);part(0,0,1,1,.9,.1,wood,true);break;
+      profile([[.24,.24,.52,.52,0],[.27,.27,.46,.46,.07],[.42,.42,.16,.16,.15],
+        [.42,.42,.16,.16,.9]],dark,1);
+      profile([[.025,.025,.95,.95,.88],[0,0,1,1,.92],[.015,.015,.97,.97,1]],wood,1);break;
     case "plant":
       part(.16,.16,.68,.68,0,.4,"#a6644c",true);
       part(.45,.45,.1,.1,.4,.28,wood,true);
@@ -1453,11 +1508,8 @@ function fixtureModel(form,b,base,height,prism) {
     case "cabinet": part(0,0,1,1,0,1,form==="rug"?cloth:wood);break;
   }
 }
-function provisionalFloor(elements) {
-  const footprints=elements.filter(e=>e.kind==="area"&&e.layer!=="Pendiente");
-  const walls=footprints.filter(structural);
-  const points=(walls.length?walls:footprints).flatMap(e=>e.points)
-    .sort((a,b)=>a.x-b.x||a.y-b.y);
+function convexHull(input) {
+  const points=[...input].sort((a,b)=>a.x-b.x||a.y-b.y);
   const hullSide=items=>{
     const side=[];
     for(const p of items){
@@ -1472,6 +1524,11 @@ function provisionalFloor(elements) {
   };
   if(points.length<3)return [];
   return [...hullSide(points),...hullSide([...points].reverse())];
+}
+function provisionalFloor(elements) {
+  const footprints=elements.filter(e=>e.kind==="area"&&e.layer!=="Pendiente");
+  const walls=footprints.filter(structural);
+  return convexHull((walls.length?walls:footprints).flatMap(e=>e.points));
 }
 function makeScene(l,preliminary=false) {
   const calibrated=scaleInfo(l).factor;
@@ -1587,7 +1644,9 @@ function makeScene(l,preliminary=false) {
     const base=e.base??0, height=positive(e.height)?e.height:(preliminary?(spec?.[0]??.75):0);
     if(!positive(height))continue;
     if(spec){
-      fixtureModel(spec[1],bounds(points),base,height,prism);
+      if(spec[1]==="rug")prism(points,base,base+height,"#92877e",false);
+      else fixtureModel(spec[1],points,base,height,prism,
+        (p,fill,side)=>faces.push({p,fill,side,pending}));
       if(e.layer!=="Accesorios"&&base<1.55&&base+height>.12)solids.push(points);
     }else prism(points,base,base+height,ink(e.layer),e.layer!=="Accesorios");
   }
@@ -1601,7 +1660,7 @@ function tourMaterial(face) {
   const vx=c.x-a.x,vy=c.y-a.y,vz=c.z-a.z;
   const normal={x:uy*vz-uz*vy,y:uz*vx-ux*vz,z:ux*vy-uy*vx};
   const length=Math.hypot(normal.x,normal.y,normal.z)||1;
-  const light=face.side?.73+.23*Math.abs((normal.x*.76-normal.y*.65)/length):1.04;
+  const light=face.side?.71+.29*Math.abs((normal.x*.58-normal.y*.48+normal.z*.65)/length):1.04;
   const material=face.fill==="#9fbacb"?"#ded9cf":face.fill==="#cbc3ae"?"#b5a089":face.fill;
   const tint=[1.02,1,.97];
   return "rgb("+tint.map((t,i)=>Math.min(255,Math.round(parseInt(material.slice(i*2+1,i*2+3),16)*light*t))).join(",")+")";
