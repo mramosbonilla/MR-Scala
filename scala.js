@@ -217,6 +217,36 @@ function holeRange(e,wall) {
       b.right-b.x<=0 || (b.bottom-b.y)*(b.right-b.x)-area(coord)>area(coord)*.05) return null;
   return [Math.max(0,b.x),Math.min(length,b.right)];
 }
+function referenceOnly(e) {
+  return e.reviewSymbol&&(e.layer==="Infraestructura"||(e.layer==="Ventanas"&&
+    /^(Montante|Marco)\b/i.test(e.name)));
+}
+function detectedModel(e) {
+  const types=fixtures[e.layer]||{};
+  const clean=name=>name.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  const name=clean(e.name);
+  const match=Object.keys(types).sort((a,b)=>b.length-a.length).find(key=>{
+    const normalized=clean(key);
+    return name===normalized||name.startsWith(normalized+" ");
+  });
+  if(match)return types[match];
+  if(e.layer==="Mesas"&&name.startsWith("mesa del comedor"))return types["Mesa de comedor"];
+  if(e.layer==="Mesas"&&name.startsWith("mesa centro"))return types["Mesa auxiliar"];
+  if(e.layer==="Sillas"&&name.startsWith("sillon"))return fixtures.Sofás.Sillón;
+  if(e.layer==="Electrodomésticos"&&/^lav(?: |$)/.test(name))return types.Lavadora;
+  if(e.layer==="Cocina"&&name.startsWith("lavadero"))return fixtures.Baños.Lavamanos;
+  return null;
+}
+function heightCandidate(e) {
+  return !referenceOnly(e)&&e.layer!=="Pendiente"&&(opening(e)||Boolean(fixtures[e.layer]))&&
+    !e.floorToCeiling&&(!positive(e.height)||e.base==null);
+}
+function openingWall(e,elements) {
+  if(e.host)return elements.find(w=>w.id===e.host&&w.layer==="Muros");
+  if(!e.reviewSymbol||e.kind!=="area")return;
+  const candidates=elements.filter(w=>w.layer==="Muros"&&holeRange(e,w));
+  if(candidates.length===1)return candidates[0];
+}
 function openingDimensions(e,levelHeight) {
   if(e.floorToCeiling)return {base:0,height:levelHeight};
   return {base:e.base,height:e.height};
@@ -232,20 +262,19 @@ function checks(l) {
   if (elements.some(e=>e.kind==="line" && (structural(e)||(opening(e)&&!(e.layer==="Puertas"&&e.swing))||e.layer==="Contorno"))) plan.push("Usa superficies para estructura, contorno y vanos.");
   const model=[];
   if (!positive(l.height)) model.push("Indica la altura libre.");
-  if(elements.some(e=>e.reviewSymbol)) model.push("Los símbolos CAD sirven para clasificar. Dibuja la huella física antes de usarla en 3D.");
-  const apertures=elements.filter(e=>opening(e)&&!e.reviewSymbol);
+  const apertures=elements.filter(e=>opening(e)&&!referenceOnly(e));
   for (const e of apertures) {
     if(e.layer==="Puertas"&&e.swing&&e.kind==="line"){
       model.push(e.name+" · selecciona la puerta y define la profundidad del vano.");
       continue;
     }
-    const wall=elements.find(w=>w.id===e.host && w.layer==="Muros");
+    const wall=openingWall(e,elements);
     if (!wall || !holeRange(e,wall)) model.push(e.name+" · el vano debe cruzar un tramo rectangular de su muro.");
     const {base,height}=openingDimensions(e,l.height);
     if (!positive(height) || base===null || base<0 || base+height>l.height+1e-9) model.push(e.name+" · revisa la altura y la base.");
     if (e.layer==="Puertas" && base!==0) model.push(e.name+" · la puerta debe comenzar en el piso.");
   }
-  for (const e of elements.filter(e=>e.kind==="area" && !e.reviewSymbol && !structural(e) && !opening(e) && !["Contorno","Infraestructura","Calles","Andenes","Jardines"].includes(e.layer))) {
+  for (const e of elements.filter(e=>e.kind==="area" && !referenceOnly(e) && !structural(e) && !opening(e) && !["Contorno","Infraestructura","Calles","Andenes","Jardines"].includes(e.layer))) {
     if (!positive(e.height) || e.base===null || e.base<0 || e.base+e.height>l.height+1e-9) model.push(e.name+" · indica una altura y base dentro del espacio.");
   }
   return {plan,model};
@@ -433,6 +462,9 @@ function refresh() {
   $("proposalScale").textContent=scaleSummary(l);
   updateReviewGuide();
   $("reviewLayer").value=activeLayer;
+  const pendingHeights=live(l).filter(heightCandidate).length;
+  $("nextHeight").hidden=!reviewingPlant||!pendingHeights;
+  $("nextHeight").textContent="Completar alturas · "+pendingHeights;
   const pieces=live(l).filter(item=>item.layer===activeLayer);
   const layerCount=pieces.length;
   const confirmed=pieces.filter(item=>item.status==="confirmed").length;
@@ -479,6 +511,7 @@ function refresh() {
   const isOpening=Boolean(e&&opening(e));
   $("openingInspector").hidden=!isOpening;
   $("openingEdit").hidden=!isOpening;
+  $("fixtureHeightEdit").hidden=!e||isOpening||!fixtures[e.layer];
   $("heightLabel").hidden=isOpening;
   $("baseLabel").hidden=isOpening;
   if(isOpening){
@@ -506,7 +539,7 @@ function refresh() {
     $("hostLabel").hidden=!opening(e);
     $("host").replaceChildren();option($("host"),"Selecciona el muro","");
     live(l).filter(w=>w.layer==="Muros").forEach(w=>option($("host"),w.name,w.id));
-    $("host").value=e.host??"";
+    $("host").value=(isOpening?openingWall(e,live(l))?.id:e.host)??"";
     $("approveElement").textContent=e.status==="confirmed" ? "Confirmado" : "Confirmar elemento";
     $("remove").textContent=e.status==="excluded" ? "Restaurar elemento" : "Excluir elemento";
   }
@@ -535,9 +568,22 @@ $("reviewLayer").onchange=()=>{
 };
 for(const name of Object.keys(catalog)) option($("catalog"),name,name);
 for(let n=1;n<=20;n++)option($("windowLeaves"),n+(n===1?" hoja":" hojas"),String(n));
-$("openingEdit").onclick=()=>{
-  $("openingInspector").open=true;
-  $("openingInspector").scrollIntoView({block:"nearest"});
+function showHeightPanel() {
+  const e=element();
+  if(!e)return;
+  const panel=$(opening(e)?"openingInspector":"elementInspector");
+  panel.open=true;
+  panel.scrollIntoView({block:"nearest"});
+}
+$("openingEdit").onclick=showHeightPanel;
+$("fixtureHeightEdit").onclick=showHeightPanel;
+$("nextHeight").onclick=()=>{
+  const candidates=live(current()).filter(heightCandidate);
+  if(!candidates.length)return;
+  const index=candidates.findIndex(e=>e.id===selected);
+  const next=candidates[(index+1)%candidates.length];
+  activeLayer=next.layer;selected=next.id;reviewHits=[];
+  setTool("select");refresh();showHeightPanel();
 };
 function navigate(next) {
   const l=current();
@@ -869,7 +915,10 @@ function classify(raw) {
   const name=raw.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
   const match=[
     [/colum|pillar/,"Columnas"],[/muro|wall|pared/,"Muros"],
-    [/puert|door/,"Puertas"],[/ventan|window/,"Ventanas"],
+    [/puert|door/,"Puertas"],[/ventan|window|glaz/,"Ventanas"],
+    [/cama|\bbed\b/,"Camas"],[/sofa|sillon/,"Sofás"],[/silla|chair/,"Sillas"],[/mesa|table/,"Mesas"],
+    [/nevera|fridge|horno|oven|lavadora|washer|electrodom/,"Electrodomésticos"],
+    [/lavamanos|sanitario|inodoro|ducha|tina/,"Baños"],
     [/sanit|bano/,"Baños"],[/cocina|kitchen/,"Cocina"],[/closet/,"Clósets"],
     [/veget|arbol/,"Vegetación"],[/muebl|furn/,"Accesorios"]
   ].find(([pattern])=>pattern.test(name));
@@ -1359,7 +1408,7 @@ function fixtureModel(form,b,base,height,prism) {
 }
 function makeScene(l,preliminary=false) {
   const calibrated=scaleInfo(l).factor;
-  const elements=live(l).filter(e=>!e.reviewSymbol), solids=[], faces=[], floors=[], openings=[];
+  const elements=live(l).filter(e=>!referenceOnly(e)), solids=[], faces=[], floors=[], openings=[];
   const drawingBounds=bounds(elements.flatMap(e=>e.points));
   const factor=calibrated||8/(Math.max(1,drawingBounds.right-drawingBounds.x,drawingBounds.bottom-drawingBounds.y));
   const wallHeight=positive(l.height)?l.height:2.6;
@@ -1379,8 +1428,8 @@ function makeScene(l,preliminary=false) {
   const holesByWall=new Map();
   for(const e of elements.filter(opening)){
     const door=e.layer==="Puertas";
-    const wall=elements.find(w=>w.layer==="Muros"&&w.id===e.host);
-    const range=wall&&e.kind==="area"?holeRange(e,wall):null;
+    const wall=openingWall(e,elements);
+    const range=wall&&e.kind==="area"&&(!e.reviewSymbol||e.status==="confirmed")?holeRange(e,wall):null;
     const dimensions=openingDimensions(e,positive(l.height)?l.height:null);
     const base=dimensions.base??(door?0:Math.min(.9,wallHeight*.4));
     const height=dimensions.height??(e.floorToCeiling?wallHeight:Math.min(door?2.05:1.1,wallHeight-base));
@@ -1391,6 +1440,9 @@ function makeScene(l,preliminary=false) {
     let axis=e.swing?[e.swing.hinge,e.swing.latch]:
       footprint?[footprint.start,{x:footprint.start.x+footprint.u.x*footprint.length,
         y:footprint.start.y+footprint.u.y*footprint.length}]:e.points.slice(0,2);
+    if(e.reviewSymbol&&!e.swing&&!footprint&&e.points.length>2){
+      axis=edges(e.points,true).reduce((best,side)=>distance(...side)>distance(...best)?side:best,axis);
+    }
     if(range&&valid){
       const {start,u,v,depth}=wallAxes(wall);
       axis=range.map(d=>({x:start.x+u.x*d+v.x*depth/2,y:start.y+u.y*d+v.y*depth/2}));
@@ -1428,7 +1480,7 @@ function makeScene(l,preliminary=false) {
     for(let i=0;i<leaves;i++)slice(i/leaves+profile,(i+1)/leaves-profile,fill);
     for(let i=0;i<=leaves;i++)slice(Math.max(0,i/leaves-profile),Math.min(1,i/leaves+profile),"#447180");
   }
-  for(const e of elements.filter(e=>e.kind==="area")) {
+  for(const e of elements.filter(e=>e.kind==="area"&&e.layer!=="Pendiente")) {
     const points=metric(e.points);
     pending=preliminary&&(!calibrated||e.status!=="confirmed"||
       (structural(e)?!positive(l.height):!positive(e.height)||e.base===null));
@@ -1454,7 +1506,7 @@ function makeScene(l,preliminary=false) {
       }
       continue;
     }
-    const spec=Object.hasOwn(fixtures[e.layer]||{},e.name)?fixtures[e.layer][e.name]:null;
+    const spec=detectedModel(e);
     const base=e.base??0, height=positive(e.height)?e.height:(preliminary?(spec?.[0]??.75):0);
     if(!positive(height))continue;
     if(spec){
